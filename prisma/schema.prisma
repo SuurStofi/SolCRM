@@ -1,0 +1,117 @@
+// SolCRM -- single-user personal tool. SQLite is deliberate: one user, one
+// machine, no concurrency to speak of.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// One SOL -> Binance -> USDT run.
+///
+/// Modelled as an explicit state machine rather than booleans because the
+/// steps fail independently: a transfer can confirm on-chain, be credited by
+/// Binance, and THEN fail at convert. That state has to be visible and
+/// resumable, not collapsed into "failed".
+///
+/// On-chain confirmation and Binance credit are tracked as SEPARATE fields:
+/// Binance credit lags the chain (often by minutes), so conflating them would
+/// either report success too early or look stuck when it is merely pending.
+model TransferFlow {
+  id String @id @default(cuid())
+
+  /// See FlowState in src/lib/flow/machine.ts for allowed values and
+  /// transitions. Stored as text: SQLite has no native enum.
+  state String @default("DRAFT")
+
+  // --- intent ---
+  amountSol      String // decimal string; never float (precision loss)
+  destinationTag String? // Binance deposit memo/tag, when the network needs one
+  depositAddress String?
+
+  // --- on-chain leg ---
+  txSignature      String?   @unique
+  chainConfirmedAt DateTime?
+
+  // --- Binance credit leg (lags the chain) ---
+  binanceCreditedAt DateTime?
+  creditedAmount    String?
+
+  // --- convert leg ---
+  convertQuoteId String?
+  convertOrderId String?
+  convertedAt    DateTime?
+  usdtReceived   String?
+
+  /// Scrubbed error text (see redact.ts) -- safe to render in the UI.
+  lastError String?
+
+  events    FlowEvent[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([state])
+}
+
+/// Append-only audit of every state transition, so a failed run can be
+/// understood after the fact rather than just showing a final status.
+model FlowEvent {
+  id     String @id @default(cuid())
+  flowId String
+  flow   TransferFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  fromState String?
+  toState   String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([flowId, createdAt])
+}
+
+/// Local archive of a P2P trade.
+///
+/// IMPORTANT: this is MY OWN record, entered by hand. Binance's public API
+/// exposes no chat history and no coin-release capability, so the app cannot
+/// reconstruct a trade from Binance. Order STATUS may be refreshable via
+/// getUserOrderDetail on a standard key -- to be verified against a live key
+/// before the polling path is built (Phase 3).
+model P2POrder {
+  id String @id @default(cuid())
+
+  /// Order number, copied from Binance's UI after creating the order manually.
+  orderNumber String @unique
+
+  /// Ad this came from, so the counterparty can be found again.
+  adNo String?
+
+  asset      String  @default("USDT")
+  fiat       String
+  /// Trade direction from MY perspective: I am selling USDT to a buyer.
+  tradeType  String  @default("SELL")
+  amount     String? // decimal string
+  price      String? // decimal string
+  totalFiat  String? // decimal string
+  payMethod  String?
+
+  counterpartyName String?
+
+  /// PENDING | PAID | COMPLETED | CANCELLED | DISPUTED -- may be updated by
+  /// hand, or refreshed from Binance if order-detail polling proves viable.
+  status String @default("PENDING")
+
+  /// True when status came from Binance rather than manual entry, so the UI
+  /// can show which records are authoritative.
+  statusFromBinance Boolean   @default(false)
+  statusCheckedAt   DateTime?
+
+  /// Free-form notes: counterparty behaviour, payment quirks, disputes.
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
