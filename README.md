@@ -33,15 +33,19 @@ Paste the key and secret into `.env.local`. That file is gitignored and was neve
 
 > Heads-up on Convert: several developers report `-1002 not authorized` on `getQuote` even with Spot & Margin enabled, sometimes needing a fresh key. Phase 2 surfaces that error verbatim rather than hiding it.
 
-### 2. Solana RPC (recommended)
+### 2. Solana RPC (optional — works out of the box)
 
-Defaults to the public mainnet endpoint, which is heavily rate-limited and will intermittently fail to load token accounts. A free [Helius](https://helius.dev) key fixes it:
+**No configuration needed.** Wallet RPC calls route through `/api/solana/rpc`, a server-side proxy.
+
+That proxy is not an optimization, it's a requirement: public endpoints like `api.mainnet-beta.solana.com` return `403 Access forbidden` to any request carrying an `Origin` header, so the browser cannot call them directly. The proxy re-issues the call server-side, where no `Origin` is sent, and allowlists only the JSON-RPC methods this app uses.
+
+To use a dedicated endpoint (e.g. [Helius](https://helius.dev)) for better reliability, prefer the **server-side** variable so the key is never shipped to the browser:
 
 ```
-NEXT_PUBLIC_SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
+SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
 ```
 
-`NEXT_PUBLIC_` values are visible in the browser. That's fine for an RPC URL — **never** use that prefix for a Binance secret.
+`NEXT_PUBLIC_SOLANA_RPC_URL` also works and bypasses the proxy entirely — only use it for an endpoint that permits browser origins, and **never** put a key you care about behind a `NEXT_PUBLIC_` name, since those are embedded in the client bundle.
 
 ---
 
