@@ -23,6 +23,14 @@ export function WalletPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const address = publicKey?.toBase58() ?? null;
+
+  // Derived during render rather than cleared in an effect: on disconnect (or
+  // a switch to another wallet) this drops data belonging to the previous key
+  // immediately, with no intermediate frame showing the wrong account.
+  const activeSnapshot = snapshot && snapshot.address === address ? snapshot : null;
+  const activeTransactions = activeSnapshot ? transactions : [];
+
   const load = useCallback(async () => {
     if (!publicKey) return;
     setLoading(true);
@@ -46,12 +54,21 @@ export function WalletPanel() {
   }, [connection, publicKey]);
 
   useEffect(() => {
-    if (connected && publicKey) {
-      void load();
-    } else {
-      setSnapshot(null);
-      setTransactions([]);
-    }
+    if (!connected || !publicKey) return;
+
+    // Deferred to a microtask so the initial setLoading(true) inside load()
+    // lands after the commit rather than synchronously during the effect
+    // (which would trigger a cascading re-render).
+    //
+    // `active` guards against a disconnect or wallet switch: an in-flight
+    // fetch can otherwise resolve after teardown and write stale results.
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (active) return load();
+    });
+    return () => {
+      active = false;
+    };
   }, [connected, publicKey, load]);
 
   return (
@@ -86,27 +103,33 @@ export function WalletPanel() {
             </div>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-3xl font-semibold tabular-nums">
-                {snapshot ? snapshot.solBalance.toFixed(6) : loading ? '--' : '0'}
+                {activeSnapshot
+                  ? activeSnapshot.solBalance.toFixed(6)
+                  : loading
+                    ? '--'
+                    : '0'}
               </span>
               <span className="text-sm text-neutral-500">SOL</span>
               {loading && <Spinner />}
             </div>
-            {publicKey && (
+            {address && (
               <a
-                href={explorerAddressUrl(publicKey.toBase58())}
+                href={explorerAddressUrl(address)}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-1 inline-block font-mono text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200"
               >
-                {shortenAddress(publicKey.toBase58(), 6)} ↗
+                {shortenAddress(address, 6)} ↗
               </a>
             )}
           </div>
 
-          <Section title={`SPL tokens${snapshot ? ` (${snapshot.tokens.length})` : ''}`}>
-            {snapshot && snapshot.tokens.length > 0 ? (
+          <Section
+            title={`SPL tokens${activeSnapshot ? ` (${activeSnapshot.tokens.length})` : ''}`}
+          >
+            {activeSnapshot && activeSnapshot.tokens.length > 0 ? (
               <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                {snapshot.tokens.slice(0, 8).map((token) => (
+                {activeSnapshot.tokens.slice(0, 8).map((token) => (
                   <li
                     key={token.mint}
                     className="flex items-center justify-between py-2 text-sm"
@@ -130,9 +153,9 @@ export function WalletPanel() {
           </Section>
 
           <Section title="Recent transactions">
-            {transactions.length > 0 ? (
+            {activeTransactions.length > 0 ? (
               <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                {transactions.slice(0, 8).map((tx) => (
+                {activeTransactions.slice(0, 8).map((tx) => (
                   <li
                     key={tx.signature}
                     className="flex items-center justify-between gap-3 py-2 text-sm"

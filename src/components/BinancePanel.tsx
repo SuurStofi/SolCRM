@@ -76,7 +76,16 @@ export function BinancePanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    // Deferred to a microtask so the initial setLoading(true) inside load()
+    // lands after the commit rather than synchronously during the effect
+    // (which would trigger a cascading re-render).
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (active) return load();
+    });
+    return () => {
+      active = false;
+    };
   }, [load]);
 
   return (
