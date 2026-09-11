@@ -12,7 +12,19 @@ import {
   type WalletSnapshot,
   type TxSummary,
 } from '@/lib/solana/read';
-import { Panel, ErrorNote, Spinner, RefreshButton } from './ui';
+import {
+  Panel,
+  SectionLabel,
+  Row,
+  ErrorNote,
+  Spinner,
+  RefreshButton,
+  Chip,
+  Skeleton,
+  EmptyRow,
+  ExtLink,
+  CopyButton,
+} from './ui';
 
 export function WalletPanel() {
   const { connection } = useConnection();
@@ -43,11 +55,7 @@ export function WalletPanel() {
       setSnapshot(snap);
       setTransactions(txs);
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? `${cause.message} -- if this is a rate limit, set NEXT_PUBLIC_SOLANA_RPC_URL to a Helius endpoint (see README).`
-          : 'Failed to load wallet data.',
-      );
+      setError(cause instanceof Error ? cause.message : 'Failed to load wallet data.');
     } finally {
       setLoading(false);
     }
@@ -74,151 +82,184 @@ export function WalletPanel() {
   return (
     <Panel
       title="Wallet"
-      subtitle="Solana - read only"
+      subtitle="Solana · read only"
+      icon={<SolanaMark />}
       action={
         <div className="flex items-center gap-2">
-          {connected && <RefreshButton onClick={load} disabled={loading} />}
-          <WalletMultiButton
-            style={{
-              height: 34,
-              fontSize: 13,
-              lineHeight: '34px',
-              padding: '0 14px',
-              borderRadius: 8,
-              backgroundColor: '#171717',
-            }}
-          />
+          {connected && <RefreshButton onClick={load} loading={loading} />}
+          <WalletMultiButton />
         </div>
       }
     >
       {!connected ? (
         <EmptyState />
       ) : (
-        <div className="space-y-5">
-          {error && <ErrorNote>{error}</ErrorNote>}
+        <div className="space-y-6">
+          {error && <ErrorNote title="Could not load wallet data">{error}</ErrorNote>}
 
+          {/* Headline balance */}
           <div>
-            <div className="text-xs uppercase tracking-wide text-neutral-500">
-              SOL balance
+            <div className="flex items-baseline gap-2">
+              {activeSnapshot ? (
+                <span className="tabular text-[2rem] font-semibold leading-none tracking-tight">
+                  {formatSol(activeSnapshot.solBalance)}
+                </span>
+              ) : (
+                <Skeleton className="h-8 w-36" />
+              )}
+              <span className="text-sm font-medium text-muted">SOL</span>
+              {loading && activeSnapshot && <Spinner className="ml-1" />}
             </div>
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-3xl font-semibold tabular-nums">
-                {activeSnapshot
-                  ? activeSnapshot.solBalance.toFixed(6)
-                  : loading
-                    ? '--'
-                    : '0'}
-              </span>
-              <span className="text-sm text-neutral-500">SOL</span>
-              {loading && <Spinner />}
-            </div>
+
             {address && (
-              <a
-                href={explorerAddressUrl(address)}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-1 inline-block font-mono text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200"
-              >
-                {shortenAddress(address, 6)} ↗
-              </a>
+              <div className="mt-2 flex items-center gap-0.5">
+                <ExtLink href={explorerAddressUrl(address)} mono>
+                  {shortenAddress(address, 6)}
+                </ExtLink>
+                <CopyButton value={address} />
+              </div>
             )}
           </div>
 
-          <Section
-            title={`SPL tokens${activeSnapshot ? ` (${activeSnapshot.tokens.length})` : ''}`}
-          >
-            {activeSnapshot && activeSnapshot.tokens.length > 0 ? (
-              <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                {activeSnapshot.tokens.slice(0, 8).map((token) => (
-                  <li
-                    key={token.mint}
-                    className="flex items-center justify-between py-2 text-sm"
-                  >
-                    {/* No token registry lookup in Phase 1, so the mint is the
-                        only reliable identifier available. */}
-                    <span className="font-mono text-xs text-neutral-600 dark:text-neutral-400">
-                      {shortenAddress(token.mint, 5)}
-                    </span>
-                    <span className="tabular-nums">
-                      {token.amount.toLocaleString(undefined, {
-                        maximumFractionDigits: Math.min(token.decimals, 6),
-                      })}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <Muted>{loading ? 'Loading...' : 'No token balances'}</Muted>
-            )}
-          </Section>
+          {/* Tokens */}
+          <div>
+            <SectionLabel
+              trailing={
+                activeSnapshot && activeSnapshot.tokens.length > 0 ? (
+                  <Chip>{activeSnapshot.tokens.length}</Chip>
+                ) : null
+              }
+            >
+              SPL tokens
+            </SectionLabel>
 
-          <Section title="Recent transactions">
-            {activeTransactions.length > 0 ? (
-              <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                {activeTransactions.slice(0, 8).map((tx) => (
-                  <li
-                    key={tx.signature}
-                    className="flex items-center justify-between gap-3 py-2 text-sm"
-                  >
-                    <a
-                      href={explorerTxUrl(tx.signature)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-mono text-xs text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
-                    >
-                      {shortenAddress(tx.signature, 6)} ↗
-                    </a>
-                    <span className="flex items-center gap-2 text-xs text-neutral-500">
-                      {tx.blockTime
-                        ? new Date(tx.blockTime * 1000).toLocaleString(undefined, {
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })
-                        : 'unknown time'}
-                      {tx.err && (
-                        <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950 dark:text-red-400">
-                          failed
-                        </span>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+            {activeSnapshot ? (
+              activeSnapshot.tokens.length > 0 ? (
+                <div>
+                  {activeSnapshot.tokens.slice(0, 6).map((token) => (
+                    <Row key={token.mint}>
+                      {/* No token registry in Phase 1, so the mint is the only
+                          reliable identifier available. */}
+                      <ExtLink href={explorerAddressUrl(token.mint)} mono>
+                        {shortenAddress(token.mint, 5)}
+                      </ExtLink>
+                      <span className="tabular font-medium">
+                        {token.amount.toLocaleString(undefined, {
+                          maximumFractionDigits: Math.min(token.decimals, 6),
+                        })}
+                      </span>
+                    </Row>
+                  ))}
+                  {activeSnapshot.tokens.length > 6 && (
+                    <p className="pt-2 text-xs text-faint">
+                      +{activeSnapshot.tokens.length - 6} more
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <EmptyRow>No token balances</EmptyRow>
+              )
             ) : (
-              <Muted>{loading ? 'Loading...' : 'No recent transactions'}</Muted>
+              <SkeletonRows />
             )}
-          </Section>
+          </div>
+
+          {/* Transactions */}
+          <div>
+            <SectionLabel>Recent activity</SectionLabel>
+            {activeSnapshot ? (
+              activeTransactions.length > 0 ? (
+                <div>
+                  {activeTransactions.slice(0, 6).map((tx) => (
+                    <Row key={tx.signature}>
+                      <span className="flex items-center gap-2">
+                        <ExtLink href={explorerTxUrl(tx.signature)} mono>
+                          {shortenAddress(tx.signature, 6)}
+                        </ExtLink>
+                        {tx.err && <Chip tone="bad">failed</Chip>}
+                      </span>
+                      <span className="text-xs text-faint">
+                        {tx.blockTime ? relativeTime(tx.blockTime) : 'unknown'}
+                      </span>
+                    </Row>
+                  ))}
+                </div>
+              ) : (
+                <EmptyRow>No recent transactions</EmptyRow>
+              )
+            ) : (
+              <SkeletonRows />
+            )}
+          </div>
         </div>
       )}
     </Panel>
   );
 }
 
+/** Trim trailing zeros so small balances stay readable. */
+function formatSol(value: number): string {
+  if (value === 0) return '0';
+  if (value < 0.000001) return value.toExponential(2);
+  return value.toFixed(6).replace(/\.?0+$/, '');
+}
+
+function relativeTime(unixSeconds: number): string {
+  const seconds = Math.floor(Date.now() / 1000) - unixSeconds;
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+  return new Date(unixSeconds * 1000).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function SkeletonRows() {
+  return (
+    <div className="space-y-2 py-1">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex items-center justify-between">
+          <Skeleton className="h-3.5 w-24" />
+          <Skeleton className="h-3.5 w-16" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-      <p className="text-sm text-neutral-600 dark:text-neutral-400">
-        Connect Phantom to view balances.
-      </p>
-      <p className="max-w-xs text-xs text-neutral-500">
-        Read-only. This app never sees your private key -- you sign every
-        transaction in your wallet.
-      </p>
+    <div className="flex flex-col items-center justify-center gap-3 py-14 text-center">
+      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-subtle text-faint">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-5 w-5">
+          <path
+            d="M3 8.5A2.5 2.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5V9M3 8.5V17a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-2M3 8.5C3 9.9 4.1 11 5.5 11H20a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-3.5a2.5 2.5 0 0 1 0-5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+      <div>
+        <p className="text-sm font-medium">Connect your wallet</p>
+        <p className="mx-auto mt-1 max-w-[16rem] text-xs leading-relaxed text-muted">
+          Read-only. Your private key stays in Phantom — this app never sees it.
+        </p>
+      </div>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function SolanaMark() {
   return (
-    <div>
-      <div className="mb-1 text-xs uppercase tracking-wide text-neutral-500">{title}</div>
-      {children}
-    </div>
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-4 w-4">
+      <path
+        d="M6 8.5h11L15 6H4l2 2.5ZM6 15.5h11L15 18H4l2-2.5ZM18 12H7l2-2.5h11L18 12Z"
+        fill="currentColor"
+      />
+    </svg>
   );
-}
-
-function Muted({ children }: { children: React.ReactNode }) {
-  return <p className="py-2 text-sm text-neutral-500">{children}</p>;
 }

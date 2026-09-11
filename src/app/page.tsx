@@ -3,26 +3,46 @@ import { BinancePanel } from '@/components/BinancePanel';
 
 export default function DashboardPage() {
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
-      <header className="mb-6 flex items-baseline justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">SolCRM</h1>
-          <p className="text-sm text-neutral-500">
-            Wallet, exchange, and P2P in one place
-          </p>
+    <div className="flex min-h-full flex-col">
+      <header className="border-b border-border bg-surface/60 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-3.5">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-[13px] font-bold text-accent-fg">
+              S
+            </span>
+            <div className="leading-tight">
+              <h1 className="text-sm font-semibold tracking-tight">SolCRM</h1>
+              <p className="text-[11px] text-faint">Wallet · Exchange · P2P</p>
+            </div>
+          </div>
+          <span className="rounded-md border border-border bg-surface-subtle px-2 py-1 text-[11px] font-medium text-muted">
+            Phase 1 · read only
+          </span>
         </div>
-        <span className="text-xs text-neutral-400">Phase 1 - read only</span>
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <WalletPanel />
-        <BinancePanel />
-      </div>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-7">
+        <div className="grid items-start gap-5 lg:grid-cols-2">
+          <WalletPanel />
+          <BinancePanel />
+        </div>
 
-      <footer className="mt-8 text-xs leading-relaxed text-neutral-400">
-        Non-custodial: your Solana private key stays in your wallet. Binance
-        credentials are read server-side only and never sent to the browser.
-      </footer>
-    </main>
+        <footer className="mt-10 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border pt-5 text-[11px] text-faint">
+          <span className="flex items-center gap-1.5">
+            <Dot /> Private key never leaves your wallet
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Dot /> Binance credentials stay server-side
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Dot /> Secrets scrubbed from all logs
+          </span>
+        </footer>
+      </main>
+    </div>
   );
+}
+
+function Dot() {
+  return <span className="h-1 w-1 rounded-full bg-good" aria-hidden="true" />;
 }

@@ -18,11 +18,21 @@ import '@solana/wallet-adapter-react-ui/styles.css';
  */
 export function SolanaProviders({ children }: { children: ReactNode }) {
   const endpoint = useMemo(() => {
+    // A browser-usable RPC (e.g. Helius) can be called directly.
     const configured = process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
     if (configured) return configured;
-    // Public RPC works but is heavily rate-limited; the README explains how to
-    // point this at Helius instead.
-    return 'https://api.mainnet-beta.solana.com';
+
+    // Otherwise go through our own proxy. Public endpoints such as
+    // api.mainnet-beta.solana.com return 403 "Access forbidden" to any request
+    // carrying an Origin header, so the browser cannot call them directly --
+    // the proxy re-issues the call server-side where no Origin is sent.
+    //
+    // Connection requires an absolute URL, and window is undefined while the
+    // page prerenders, so fall back to a placeholder that is never called:
+    // every RPC request originates from a browser event after hydration.
+    return typeof window === 'undefined'
+      ? 'https://api.mainnet-beta.solana.com'
+      : `${window.location.origin}/api/solana/rpc`;
   }, []);
 
   return (

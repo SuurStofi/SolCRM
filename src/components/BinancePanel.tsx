@@ -1,7 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Panel, ErrorNote, Spinner, RefreshButton, Chip } from './ui';
+import {
+  Panel,
+  SectionLabel,
+  Row,
+  ErrorNote,
+  Spinner,
+  RefreshButton,
+  Chip,
+  Skeleton,
+  EmptyRow,
+} from './ui';
 
 interface Balance {
   asset: string;
@@ -91,121 +101,140 @@ export function BinancePanel() {
   return (
     <Panel
       title="Binance"
-      subtitle="Spot account - read only"
-      action={<RefreshButton onClick={load} disabled={loading} />}
+      subtitle="Spot account · read only"
+      icon={<BinanceMark />}
+      action={<RefreshButton onClick={load} loading={loading} />}
     >
-      <div className="space-y-5">
+      <div className="space-y-6">
         {error && (
-          <ErrorNote>
-            <p className="font-medium">Could not load Binance account</p>
-            <p className="mt-1 text-xs leading-relaxed">{error}</p>
-            <p className="mt-2 text-xs">
-              Check that <code className="font-mono">.env.local</code> has your API key
-              and secret, that the key has &quot;Enable Reading&quot;, and that your IP is
-              allowlisted. See the README.
+          <ErrorNote title="Could not load Binance account">
+            <p>{error}</p>
+            <p className="mt-2 opacity-80">
+              Check that <code className="font-mono">.env.local</code> has your key and
+              secret, that the key has &quot;Enable Reading&quot;, and that your IP is
+              allowlisted.
             </p>
           </ErrorNote>
         )}
 
         {account && (
           <>
-            {/* Surfacing permissions here is a safety check: withdrawals should
-                be OFF on this key. If it reads "withdrawals enabled", that key
-                is over-scoped for what this app does. */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-neutral-500">Key permissions:</span>
-              <Chip tone={account.permissions.canTrade ? 'good' : 'neutral'}>
-                {account.permissions.canTrade ? 'trading on' : 'trading off'}
-              </Chip>
-              <Chip tone={account.permissions.canWithdraw ? 'bad' : 'good'}>
-                {account.permissions.canWithdraw
-                  ? 'withdrawals ON - disable this'
-                  : 'withdrawals off'}
-              </Chip>
-            </div>
+            {/* Withdrawals should be OFF for what this app does. Surfacing it
+                here makes an over-scoped key impossible to miss. */}
+            {account.permissions.canWithdraw && (
+              <div className="rounded-lg border border-warn/30 bg-warn-bg px-3.5 py-2.5 text-xs leading-relaxed text-warn">
+                <span className="font-semibold">Withdrawals are enabled</span> on this API
+                key. Nothing here withdraws — turning it off in Binance limits the damage
+                if the key ever leaks.
+              </div>
+            )}
 
             <div>
-              <div className="mb-1 text-xs uppercase tracking-wide text-neutral-500">
-                Balances{' '}
-                {account.balances.length > 0 && `(${account.balances.length})`}
-                {loading && <Spinner />}
-              </div>
+              <SectionLabel
+                trailing={
+                  <div className="flex gap-1">
+                    <Chip tone={account.permissions.canTrade ? 'accent' : 'neutral'}>
+                      {account.permissions.canTrade ? 'trade' : 'read only'}
+                    </Chip>
+                    <Chip tone={account.permissions.canWithdraw ? 'bad' : 'good'}>
+                      {account.permissions.canWithdraw ? 'withdraw on' : 'withdraw off'}
+                    </Chip>
+                  </div>
+                }
+              >
+                Balances
+              </SectionLabel>
+
               {account.balances.length > 0 ? (
-                <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                  {account.balances.slice(0, 10).map((balance) => (
-                    <li
-                      key={balance.asset}
-                      className="flex items-center justify-between py-2 text-sm"
-                    >
-                      <span className="flex items-center gap-1.5 font-medium">
-                        {/* "LD" prefixed assets are Simple Earn Flexible
-                            positions, not spot balance. They cannot be traded
-                            or converted until redeemed, so flag them rather
-                            than showing a ticker that looks spendable. */}
-                        {balance.asset.startsWith('LD')
-                          ? balance.asset.slice(2)
-                          : balance.asset}
-                        {balance.asset.startsWith('LD') && (
-                          <Chip tone="warn">Earn</Chip>
-                        )}
-                      </span>
-                      <span className="text-right tabular-nums">
-                        {balance.free}
-                        {Number(balance.locked) > 0 && (
-                          <span className="ml-2 text-xs text-amber-600 dark:text-amber-500">
-                            +{balance.locked} locked
-                          </span>
-                        )}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <div>
+                  {account.balances.slice(0, 8).map((balance) => {
+                    // "LD"-prefixed assets are Simple Earn Flexible positions,
+                    // not spot balance. They cannot be traded or converted
+                    // until redeemed, so flag them rather than showing a
+                    // ticker that looks spendable.
+                    const isEarn = balance.asset.startsWith('LD');
+                    return (
+                      <Row key={balance.asset}>
+                        <span className="flex items-center gap-1.5 font-medium">
+                          {isEarn ? balance.asset.slice(2) : balance.asset}
+                          {isEarn && <Chip tone="warn">Earn</Chip>}
+                        </span>
+                        <span className="text-right">
+                          <span className="tabular font-medium">{balance.free}</span>
+                          {Number(balance.locked) > 0 && (
+                            <span className="tabular ml-2 text-xs text-warn">
+                              +{balance.locked} locked
+                            </span>
+                          )}
+                        </span>
+                      </Row>
+                    );
+                  })}
+                </div>
               ) : (
-                <p className="py-2 text-sm text-neutral-500">No non-zero balances</p>
+                <EmptyRow>No non-zero balances</EmptyRow>
               )}
             </div>
 
             <div>
-              <div className="mb-1 text-xs uppercase tracking-wide text-neutral-500">
-                Recent SOL deposits
-              </div>
+              <SectionLabel>Recent SOL deposits</SectionLabel>
               {deposits.length > 0 ? (
-                <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                <div>
                   {deposits.slice(0, 5).map((deposit) => (
-                    <li
-                      key={deposit.txId || deposit.insertTime}
-                      className="flex items-center justify-between gap-2 py-2 text-sm"
-                    >
-                      <span className="tabular-nums">
+                    <Row key={deposit.txId || deposit.insertTime}>
+                      <span className="tabular font-medium">
                         {deposit.amount} {deposit.coin}
                       </span>
-                      <span className="flex items-center gap-2 text-xs text-neutral-500">
-                        {new Date(deposit.insertTime).toLocaleDateString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                        })}
+                      <span className="flex items-center gap-2">
+                        <span className="text-xs text-faint">
+                          {new Date(deposit.insertTime).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </span>
                         <Chip tone={deposit.status === 1 ? 'good' : 'warn'}>
-                          {DEPOSIT_STATUS_LABELS[deposit.status] ?? `status ${deposit.status}`}
+                          {DEPOSIT_STATUS_LABELS[deposit.status] ??
+                            `status ${deposit.status}`}
                         </Chip>
                       </span>
-                    </li>
+                    </Row>
                   ))}
-                </ul>
+                </div>
               ) : (
-                <p className="py-2 text-sm text-neutral-500">
-                  {loading ? 'Loading...' : 'No recent SOL deposits'}
-                </p>
+                <EmptyRow>No recent SOL deposits</EmptyRow>
               )}
             </div>
           </>
         )}
 
         {loading && !account && !error && (
-          <div className="flex items-center gap-2 py-12 text-sm text-neutral-500">
-            <Spinner /> Connecting to Binance...
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <Skeleton className="h-3 w-20" />
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <Skeleton className="h-3.5 w-16" />
+                  <Skeleton className="h-3.5 w-24" />
+                </div>
+              ))}
+            </div>
+            <p className="flex items-center gap-2 text-xs text-faint">
+              <Spinner /> Contacting Binance…
+            </p>
           </div>
         )}
       </div>
     </Panel>
+  );
+}
+
+function BinanceMark() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-4 w-4">
+      <path
+        d="m12 3 2.6 2.6L12 8.2 9.4 5.6 12 3ZM6.6 8.4 9.2 11l-2.6 2.6L4 11l2.6-2.6ZM17.4 8.4 20 11l-2.6 2.6L14.8 11l2.6-2.6ZM12 9.4 14.6 12 12 14.6 9.4 12 12 9.4ZM12 15.8l2.6 2.6L12 21l-2.6-2.6 2.6-2.6Z"
+        fill="currentColor"
+      />
+    </svg>
   );
 }

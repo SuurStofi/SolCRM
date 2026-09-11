@@ -1,26 +1,137 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens.
+ *
+ * Light palette is defined on bare :root so it is the default; dark mode only
+ * redefines the tokens. Every colour used in the app resolves through one of
+ * these, so the two themes stay in sync by construction.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  --background: #f7f7f8;
+  --surface: #ffffff;
+  --surface-subtle: #fafafa;
+  --foreground: #18181b;
+  --muted: #71717a;
+  --faint: #a1a1aa;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --accent: #6d54d1;
+  --accent-fg: #ffffff;
+
+  --good: #15803d;
+  --good-bg: #dcfce7;
+  --warn: #b45309;
+  --warn-bg: #fef3c7;
+  --bad: #b91c1c;
+  --bad-bg: #fee2e2;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.06);
+  --shadow-lift: 0 4px 12px rgb(0 0 0 / 0.08);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0b0b0e;
+    --surface: #141418;
+    --surface-subtle: #1a1a1f;
+    --foreground: #f4f4f5;
+    --muted: #8b8b94;
+    --faint: #5c5c66;
+    --border: #26262c;
+    --border-strong: #35353d;
+
+    --accent: #9b83f0;
+    --accent-fg: #14101f;
+
+    --good: #4ade80;
+    --good-bg: #052e16;
+    --warn: #fbbf24;
+    --warn-bg: #3b2a06;
+    --bad: #f87171;
+    --bad-bg: #3b0d0d;
+
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px rgb(0 0 0 / 0.4);
+    --shadow-lift: 0 4px 16px rgb(0 0 0 / 0.5);
   }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-good: var(--good);
+  --color-good-bg: var(--good-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-bad: var(--bad);
+  --color-bad-bg: var(--bad-bg);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* The scaffold hardcoded Arial here, which overrode the Geist fonts loaded
+     in layout.tsx. Use the token so the loaded font actually applies. */
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Numeric columns should not jitter as digits change during refresh. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Wallet adapter ships its own opinionated button styles. Override them to
+ * match the design system rather than letting a purple default button sit in
+ * an otherwise neutral UI.
+ */
+.wallet-adapter-button-trigger {
+  background-color: var(--accent) !important;
+  color: var(--accent-fg) !important;
+  font-family: var(--font-sans), sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  height: 34px !important;
+  line-height: 34px !important;
+  padding: 0 14px !important;
+  border-radius: 8px !important;
+  transition: filter 0.15s ease;
+}
+
+.wallet-adapter-button-trigger:not([disabled]):hover {
+  filter: brightness(1.08);
+}
+
+/* Entry animation for panels, kept subtle. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  animation: rise 0.3s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
 }
