@@ -4,6 +4,9 @@ import {
   PublicKey,
   type ConfirmedSignatureInfo,
 } from '@solana/web3.js';
+// Imported rather than hardcoded: a mistyped program id is silently wrong --
+// the RPC just answers INVALID_PARAMS and the panel shows no tokens.
+import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 
 /**
  * Read-only Solana queries.
@@ -12,9 +15,7 @@ import {
  * no private key -- this module could not move funds if it wanted to.
  */
 
-/** Token Program IDs. Newer mints use Token-2022, so both must be queried. */
-const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-const TOKEN_2022_PROGRAM_ID = new PublicKey('TokezQdaPjM8u6rYAtGgL4avdNgBHvbeLFC6xPqQ2BS');
+/** Newer mints live under Token-2022, so both programs must be queried. */
 
 export interface TokenHolding {
   mint: string;
@@ -42,9 +43,12 @@ export async function getWalletSnapshot(
     connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }),
     connection
       .getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID })
-      // Some RPC providers reject the Token-2022 program id; a failure here
-      // should not blank out the whole panel.
-      .catch(() => ({ value: [] as never[] })),
+      // A Token-2022 failure should not blank the whole panel, but it must not
+      // pass silently either -- swallowing it is what hid a bad program id.
+      .catch((cause: unknown) => {
+        console.warn('[solana] Token-2022 accounts unavailable:', cause);
+        return { value: [] as never[] };
+      }),
   ]);
 
   const tokens: TokenHolding[] = [...legacy.value, ...token2022.value]

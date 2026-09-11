@@ -137,7 +137,18 @@ export function BinancePanel() {
                       key={balance.asset}
                       className="flex items-center justify-between py-2 text-sm"
                     >
-                      <span className="font-medium">{balance.asset}</span>
+                      <span className="flex items-center gap-1.5 font-medium">
+                        {/* "LD" prefixed assets are Simple Earn Flexible
+                            positions, not spot balance. They cannot be traded
+                            or converted until redeemed, so flag them rather
+                            than showing a ticker that looks spendable. */}
+                        {balance.asset.startsWith('LD')
+                          ? balance.asset.slice(2)
+                          : balance.asset}
+                        {balance.asset.startsWith('LD') && (
+                          <Chip tone="warn">Earn</Chip>
+                        )}
+                      </span>
                       <span className="text-right tabular-nums">
                         {balance.free}
                         {Number(balance.locked) > 0 && (
