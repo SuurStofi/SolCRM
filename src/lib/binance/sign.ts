@@ -70,6 +70,12 @@ export function signPayload(params: Params, apiSecret: string): string {
 let serverTimeOffsetMs = 0;
 
 export function setServerTimeOffset(offsetMs: number): void {
+  // A non-finite offset would silently turn every timestamp into NaN, which
+  // Binance rejects as -1102 "malformed parameter" -- an error that gives no
+  // hint about the real cause. Refuse it at the source instead.
+  if (!Number.isFinite(offsetMs)) {
+    throw new Error(`Refusing to set a non-finite server time offset: ${offsetMs}`);
+  }
   serverTimeOffsetMs = offsetMs;
 }
 
@@ -77,9 +83,16 @@ export function getServerTimeOffset(): number {
   return serverTimeOffsetMs;
 }
 
-/** Current time corrected to Binance server time. */
+/**
+ * Current time corrected to Binance server time.
+ *
+ * Rounded to an integer: the offset is computed with a round-trip halving and
+ * is therefore usually fractional. A fractional timestamp serializes as
+ * "1789154934354.5", which Binance rejects with -1100 ("Illegal characters in
+ * parameter 'timestamp'; legal range is ^[0-9]{1,20}$").
+ */
 export function signedTimestamp(): number {
-  return Date.now() + serverTimeOffsetMs;
+  return Math.round(Date.now() + serverTimeOffsetMs);
 }
 
 /**
@@ -90,5 +103,12 @@ export function signedTimestamp(): number {
 export const DEFAULT_RECV_WINDOW = 5000;
 
 export function withAuthParams(params: Params, recvWindow = DEFAULT_RECV_WINDOW): Params {
-  return { ...params, timestamp: signedTimestamp(), recvWindow };
+  const timestamp = signedTimestamp();
+  // Last line of defence: never transmit a NaN timestamp, whatever produced it.
+  if (!Number.isFinite(timestamp)) {
+    throw new Error(
+      'Computed a non-finite request timestamp; refusing to send an unsignable request.',
+    );
+  }
+  return { ...params, timestamp, recvWindow };
 }

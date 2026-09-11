@@ -22,7 +22,12 @@ interface Balance {
 
 interface AccountSnapshot {
   balances: Balance[];
-  permissions: { canTrade: boolean; canWithdraw: boolean; canDeposit: boolean };
+  permissions: {
+    canRead: boolean;
+    canTrade: boolean;
+    canWithdraw: boolean;
+    ipRestricted: boolean;
+  };
   hiddenZeroCount: number;
 }
 
@@ -133,9 +138,10 @@ export function BinancePanel() {
               <SectionLabel
                 trailing={
                   <div className="flex gap-1">
-                    <Chip tone={account.permissions.canTrade ? 'accent' : 'neutral'}>
-                      {account.permissions.canTrade ? 'trade' : 'read only'}
+                    <Chip tone={account.permissions.canTrade ? 'accent' : 'warn'}>
+                      {account.permissions.canTrade ? 'convert ready' : 'convert off'}
                     </Chip>
+                    {account.permissions.ipRestricted && <Chip tone="good">IP locked</Chip>}
                     <Chip tone={account.permissions.canWithdraw ? 'bad' : 'good'}>
                       {account.permissions.canWithdraw ? 'withdraw on' : 'withdraw off'}
                     </Chip>

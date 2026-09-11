@@ -1,5 +1,6 @@
 import { WalletPanel } from '@/components/WalletPanel';
 import { BinancePanel } from '@/components/BinancePanel';
+import { TransferPanel } from '@/components/TransferPanel';
 
 export default function DashboardPage() {
   return (
@@ -16,7 +17,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <span className="rounded-md border border-border bg-surface-subtle px-2 py-1 text-[11px] font-medium text-muted">
-            Phase 1 · read only
+            Phase 2 · transfer & convert
           </span>
         </div>
       </header>
@@ -25,6 +26,10 @@ export default function DashboardPage() {
         <div className="grid items-start gap-5 lg:grid-cols-2">
           <WalletPanel />
           <BinancePanel />
+        </div>
+
+        <div className="mt-5">
+          <TransferPanel />
         </div>
 
         <footer className="mt-10 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border pt-5 text-[11px] text-faint">

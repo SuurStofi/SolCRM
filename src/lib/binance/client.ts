@@ -198,6 +198,17 @@ function sleep(ms: number): Promise<void> {
 export async function syncServerTime(): Promise<number> {
   const before = Date.now();
   const { serverTime } = await binanceRequest<{ serverTime: number }>('/api/v3/time');
+
+  // Guard against a malformed response. If serverTime were undefined the
+  // offset would be NaN, every later signed request would carry
+  // `timestamp=NaN`, and Binance would answer -1102 "malformed parameter" --
+  // an error that points nowhere near the actual cause.
+  if (typeof serverTime !== 'number' || !Number.isFinite(serverTime)) {
+    throw new SafeError(
+      'Binance returned an unusable server time; cannot sign requests safely.',
+    );
+  }
+
   // Compensate for round-trip: assume the response reflects the midpoint.
   const rtt = Date.now() - before;
   const offset = serverTime - (before + rtt / 2);

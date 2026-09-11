@@ -17,11 +17,19 @@ export async function handleRoute<T>(
   try {
     return NextResponse.json({ ok: true, data: await work() });
   } catch (error) {
+    // redact() on a raw Error includes its stack, which is useful in the log
+    // but noise in the UI. Prefer the message alone for ordinary Errors;
+    // it is still scrubbed.
     const message =
-      error instanceof SafeError ? error.message : redact(error);
+      error instanceof SafeError
+        ? error.message
+        : error instanceof Error
+          ? redact(error.message)
+          : redact(error);
 
-    // Logged scrubbed; never the raw error object.
-    safeLog.error(`[api] ${label} failed: ${message}`);
+    // The log keeps the full scrubbed error (including the stack) for
+    // debugging; only the UI gets the trimmed message. Never the raw object.
+    safeLog.error(`[api] ${label} failed: ${redact(error)}`);
 
     const status = error instanceof SafeError && error.status === 418 ? 503 : 502;
 

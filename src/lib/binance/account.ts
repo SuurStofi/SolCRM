@@ -31,12 +31,46 @@ export interface Balance {
 
 export interface AccountSnapshot {
   balances: Balance[];
-  permissions: {
-    canTrade: boolean;
-    canWithdraw: boolean;
-    canDeposit: boolean;
-  };
+  /** Permissions of the API KEY itself -- see getKeyRestrictions. */
+  permissions: KeyRestrictions;
   hiddenZeroCount: number;
+}
+
+export interface KeyRestrictions {
+  canRead: boolean;
+  canTrade: boolean;
+  canWithdraw: boolean;
+  ipRestricted: boolean;
+}
+
+interface RawApiRestrictions {
+  enableReading?: boolean;
+  enableSpotAndMarginTrading?: boolean;
+  enableWithdrawals?: boolean;
+  ipRestrict?: boolean;
+}
+
+/**
+ * Permissions of the API KEY. Weight 1.
+ *
+ * This is deliberately NOT read from /api/v3/account: that endpoint's
+ * canTrade/canWithdraw describe the ACCOUNT's own capabilities, not what this
+ * key is allowed to do. An account with withdrawals available reports
+ * canWithdraw:true even when the key has withdrawals disabled -- which is
+ * exactly backwards for a safety indicator.
+ */
+export async function getKeyRestrictions(): Promise<KeyRestrictions> {
+  await ensureTimeSynced();
+  const raw = await binanceRequest<RawApiRestrictions>(
+    '/sapi/v1/account/apiRestrictions',
+    { signed: true },
+  );
+  return {
+    canRead: raw.enableReading ?? false,
+    canTrade: raw.enableSpotAndMarginTrading ?? false,
+    canWithdraw: raw.enableWithdrawals ?? false,
+    ipRestricted: raw.ipRestrict ?? false,
+  };
 }
 
 /**
@@ -47,10 +81,13 @@ export interface AccountSnapshot {
  */
 export async function getAccountSnapshot(): Promise<AccountSnapshot> {
   await ensureTimeSynced();
-  const account = await binanceRequest<AccountInfo>('/api/v3/account', {
-    signed: true,
-    params: { omitZeroBalances: 'true' },
-  });
+  const [account, permissions] = await Promise.all([
+    binanceRequest<AccountInfo>('/api/v3/account', {
+      signed: true,
+      params: { omitZeroBalances: 'true' },
+    }),
+    getKeyRestrictions(),
+  ]);
 
   const balances: Balance[] = (account.balances ?? [])
     .map((b) => ({
@@ -66,11 +103,7 @@ export async function getAccountSnapshot(): Promise<AccountSnapshot> {
 
   return {
     balances,
-    permissions: {
-      canTrade: account.canTrade,
-      canWithdraw: account.canWithdraw,
-      canDeposit: account.canDeposit,
-    },
+    permissions,
     hiddenZeroCount: Math.max(0, (account.balances?.length ?? 0) - balances.length),
   };
 }
