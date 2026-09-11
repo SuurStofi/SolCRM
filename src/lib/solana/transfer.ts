@@ -17,28 +17,113 @@ import type { WalletAdapterProps } from '@solana/wallet-adapter-base';
  */
 
 /**
- * Reserve left behind so the account stays rent-exempt and can still pay fees.
- * Sending the entire balance leaves an account that cannot transact.
+ * Base fee per signature, fixed by the protocol. A simple transfer carries one
+ * signature, so this is the whole fee at zero priority.
  */
-const RESERVE_LAMPORTS = 5_000_000; // 0.005 SOL
+export const BASE_FEE_LAMPORTS = 5_000;
 
-export function maxSendableLamports(balanceLamports: number): number {
-  return Math.max(0, balanceLamports - RESERVE_LAMPORTS);
+/**
+ * Rent-exempt minimum for a bare system account (zero data bytes), queried
+ * from the chain at 810_624 lamports. Fetched live where possible, since the
+ * rent parameters are a chain setting rather than a true constant.
+ *
+ * A wallet that drops below this becomes rent-collectable, so the balance left
+ * behind must cover it.
+ */
+export const FALLBACK_RENT_EXEMPT_LAMPORTS = 810_624;
+
+export interface FeeBreakdown {
+  /** Total balance in the wallet. */
+  balanceLamports: number;
+  /** Network fee for this transfer. */
+  feeLamports: number;
+  /** Must stay in the account to keep it rent-exempt. */
+  rentExemptLamports: number;
+  /** Largest amount that can actually be sent. */
+  maxSendableLamports: number;
+}
+
+/**
+ * Work out what can actually be sent.
+ *
+ * Deliberately queries the chain rather than assuming: an earlier fixed 0.005
+ * SOL reserve was roughly six times the real requirement, which silently
+ * stranded usable funds.
+ */
+export async function getFeeBreakdown(
+  connection: Connection,
+  owner: PublicKey,
+): Promise<FeeBreakdown> {
+  const [balanceLamports, rentExemptLamports] = await Promise.all([
+    connection.getBalance(owner),
+    connection
+      .getMinimumBalanceForRentExemption(0)
+      .catch(() => FALLBACK_RENT_EXEMPT_LAMPORTS),
+  ]);
+
+  const feeLamports = BASE_FEE_LAMPORTS;
+  const reserved = feeLamports + rentExemptLamports;
+
+  return {
+    balanceLamports,
+    feeLamports,
+    rentExemptLamports,
+    maxSendableLamports: Math.max(0, balanceLamports - reserved),
+  };
 }
 
 export function lamportsToSol(lamports: number): number {
   return lamports / LAMPORTS_PER_SOL;
 }
 
+/** Format lamports as a SOL string without exponent notation or trailing zeros. */
+export function formatSol(lamports: number): string {
+  const text = (lamports / LAMPORTS_PER_SOL).toFixed(9).replace(/\.?0+$/, '');
+  return text === '' || text === '-' ? '0' : text;
+}
+
 /**
  * Convert a decimal SOL string to lamports without floating point drift.
- * `0.1 * LAMPORTS_PER_SOL` is not exactly 100000000 in IEEE-754, and this
- * value decides how much money moves.
+ * `4.35 * LAMPORTS_PER_SOL` is 4350000000.0000005 in IEEE-754, and this value
+ * decides how much money moves.
  */
 export function solStringToLamports(amount: string): number {
   const [whole, fraction = ''] = amount.trim().split('.');
   const padded = (fraction + '000000000').slice(0, 9);
   return Number(BigInt(whole || '0') * BigInt(LAMPORTS_PER_SOL) + BigInt(padded));
+}
+
+/**
+ * Thrown when the wallet cannot cover the amount plus fees. Carries the
+ * numbers so the UI can explain the shortfall rather than just refusing.
+ */
+export class InsufficientFundsError extends Error {
+  readonly breakdown: FeeBreakdown;
+  readonly requestedLamports: number;
+
+  constructor(breakdown: FeeBreakdown, requestedLamports: number) {
+    const shortfall =
+      requestedLamports + breakdown.feeLamports + breakdown.rentExemptLamports -
+      breakdown.balanceLamports;
+
+    super(
+      breakdown.maxSendableLamports <= 0
+        ? `Not enough SOL to send. The wallet holds ${formatSol(
+            breakdown.balanceLamports,
+          )} SOL, but ${formatSol(
+            breakdown.feeLamports + breakdown.rentExemptLamports,
+          )} SOL must stay behind for the network fee and the rent-exempt minimum.`
+        : `Not enough SOL to send ${formatSol(requestedLamports)} SOL. ` +
+          `Short by ${formatSol(shortfall)} SOL — the most you can send is ${formatSol(
+            breakdown.maxSendableLamports,
+          )} SOL after the ${formatSol(breakdown.feeLamports)} SOL fee and the ${formatSol(
+            breakdown.rentExemptLamports,
+          )} SOL rent-exempt minimum.`,
+    );
+    this.name = 'InsufficientFundsError';
+    this.breakdown = breakdown;
+    this.requestedLamports = requestedLamports;
+  }
 }
 
 export interface SendResult {
@@ -57,13 +142,11 @@ export async function sendSolTransfer(
 
   if (lamports <= 0) throw new Error('Amount must be greater than zero.');
 
-  const balance = await connection.getBalance(from);
-  if (lamports > maxSendableLamports(balance)) {
-    throw new Error(
-      `Amount exceeds the spendable balance. Keep at least ${lamportsToSol(
-        RESERVE_LAMPORTS,
-      )} SOL for fees and rent.`,
-    );
+  // Re-checked immediately before sending: the balance may have changed since
+  // the panel last refreshed.
+  const breakdown = await getFeeBreakdown(connection, from);
+  if (lamports > breakdown.maxSendableLamports) {
+    throw new InsufficientFundsError(breakdown, lamports);
   }
 
   const transaction = new Transaction().add(
@@ -72,7 +155,8 @@ export async function sendSolTransfer(
 
   // A recent blockhash is required and expires quickly; fetch it immediately
   // before signing rather than reusing an older one.
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  const { blockhash, lastValidBlockHeight } =
+    await connection.getLatestBlockhash('confirmed');
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = from;
 

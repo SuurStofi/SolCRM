@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { sendSolTransfer } from '@/lib/solana/transfer';
+import {
+  sendSolTransfer,
+  getFeeBreakdown,
+  solStringToLamports,
+  formatSol,
+  type FeeBreakdown,
+} from '@/lib/solana/transfer';
 import { explorerTxUrl, shortenAddress } from '@/lib/solana/read';
 import {
   STATE_LABELS,
@@ -73,6 +79,30 @@ export function TransferPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [quote, setQuote] = useState<{ flowId: string; quote: Quote } | null>(null);
+  const [fees, setFees] = useState<FeeBreakdown | null>(null);
+
+  const loadFees = useCallback(async () => {
+    if (!publicKey) {
+      setFees(null);
+      return;
+    }
+    try {
+      setFees(await getFeeBreakdown(connection, publicKey));
+    } catch {
+      // Non-fatal: the panel still works, it just cannot show Max or the fee.
+      setFees(null);
+    }
+  }, [connection, publicKey]);
+
+  // Validate as the user types so the error appears before they click Send,
+  // rather than after a round-trip that creates a flow record.
+  const amountLamports = amount.trim() === '' ? 0 : safeParse(amount);
+  const amountInvalid = amount.trim() !== '' && amountLamports === null;
+  const overMax =
+    fees !== null &&
+    amountLamports !== null &&
+    amountLamports > fees.maxSendableLamports;
+  const nothingSendable = fees !== null && fees.maxSendableLamports <= 0;
 
   const refresh = useCallback(async () => {
     try {
@@ -84,13 +114,15 @@ export function TransferPanel() {
 
   useEffect(() => {
     let active = true;
-    void Promise.resolve().then(() => {
-      if (active) return refresh();
+    void Promise.resolve().then(async () => {
+      if (!active) return;
+      await refresh();
+      if (active) await loadFees();
     });
     return () => {
       active = false;
     };
-  }, [refresh]);
+  }, [refresh, loadFees]);
 
   /** Full transfer leg: create intent -> sign in wallet -> confirm -> record. */
   const startTransfer = useCallback(async () => {
@@ -118,6 +150,8 @@ export function TransferPanel() {
       await api('/api/flow/check-credit', { id: flow.id, state: 'CHAIN_CONFIRMED' }, 'PATCH');
       setAmount('');
       await refresh();
+      // Balance changed, so Max and the fee breakdown are now stale.
+      await loadFees();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Transfer failed.';
       setError(message);
@@ -131,7 +165,7 @@ export function TransferPanel() {
     } finally {
       setBusy(null);
     }
-  }, [amount, connection, publicKey, sendTransaction, refresh]);
+  }, [amount, connection, publicKey, sendTransaction, refresh, loadFees]);
 
   const checkCredit = useCallback(
     async (flowId: string) => {
@@ -197,38 +231,118 @@ export function TransferPanel() {
       title="Transfer & Convert"
       subtitle="SOL → Binance → USDT"
       icon={<ArrowsMark />}
-      action={<RefreshButton onClick={refresh} loading={busy !== null} />}
+      action={
+        <RefreshButton
+          onClick={() => void Promise.all([refresh(), loadFees()])}
+          loading={busy !== null}
+        />
+      }
     >
       <div className="space-y-6">
         {error && <ErrorNote title="Something went wrong">{error}</ErrorNote>}
 
         {/* New transfer */}
         <div>
-          <SectionLabel>Send SOL to Binance</SectionLabel>
+          <SectionLabel
+            trailing={
+              fees && (
+                <span className="tabular text-[11px] text-faint">
+                  balance {formatSol(fees.balanceLamports)} SOL
+                </span>
+              )
+            }
+          >
+            Send SOL to Binance
+          </SectionLabel>
+
           <div className="flex gap-2">
-            <input
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-              inputMode="decimal"
-              placeholder="0.00"
-              disabled={!connected || busy !== null}
-              className="tabular w-full rounded-lg border border-border bg-surface-subtle px-3 py-2 text-sm outline-none transition placeholder:text-faint focus:border-accent disabled:opacity-50"
-            />
+            <div
+              className={`flex w-full items-center rounded-lg border bg-surface-subtle px-3 transition focus-within:border-accent ${
+                amountInvalid || overMax ? 'border-bad' : 'border-border'
+              }`}
+            >
+              <input
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                inputMode="decimal"
+                placeholder="0.00"
+                disabled={!connected || busy !== null}
+                className="tabular w-full bg-transparent py-2 text-sm outline-none placeholder:text-faint disabled:opacity-50"
+              />
+              <span className="mr-2 text-xs font-medium text-faint">SOL</span>
+              <button
+                type="button"
+                onClick={() => fees && setAmount(formatSol(fees.maxSendableLamports))}
+                disabled={!connected || busy !== null || !fees || nothingSendable}
+                className="shrink-0 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted transition hover:border-border-strong hover:text-foreground disabled:opacity-40"
+              >
+                Max
+              </button>
+            </div>
             <button
               type="button"
               onClick={startTransfer}
-              disabled={!connected || busy !== null || !amount}
+              disabled={
+                !connected ||
+                busy !== null ||
+                !amount ||
+                amountInvalid ||
+                overMax ||
+                nothingSendable
+              }
               className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {busy === 'transfer' && <Spinner className="border-t-accent-fg" />}
               Send
             </button>
           </div>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
-            {connected
-              ? 'You approve the transaction in your wallet. A small SOL reserve is kept for fees.'
-              : 'Connect your wallet to send.'}
-          </p>
+
+          {/* Fee breakdown, so "why can't I send everything?" is answered
+              before it is asked. */}
+          {fees && (
+            <div className="mt-2 space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-faint">Network fee</span>
+                <span className="tabular text-muted">
+                  {formatSol(fees.feeLamports)} SOL
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-faint">Rent-exempt minimum kept</span>
+                <span className="tabular text-muted">
+                  {formatSol(fees.rentExemptLamports)} SOL
+                </span>
+              </div>
+              <div className="flex items-center justify-between border-t border-border/60 pt-1 text-[11px]">
+                <span className="font-medium text-muted">Max sendable</span>
+                <span className="tabular font-medium">
+                  {formatSol(fees.maxSendableLamports)} SOL
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Inline validation, shown before Send is pressed. */}
+          {nothingSendable ? (
+            <p className="mt-2 text-[11px] leading-relaxed text-bad">
+              Not enough SOL to send. The wallet holds{' '}
+              {fees && formatSol(fees.balanceLamports)} SOL, which does not cover the
+              network fee plus the rent-exempt minimum.
+            </p>
+          ) : amountInvalid ? (
+            <p className="mt-2 text-[11px] text-bad">Enter a valid amount.</p>
+          ) : overMax ? (
+            <p className="mt-2 text-[11px] leading-relaxed text-bad">
+              Not enough SOL to send that amount. The most you can send is{' '}
+              {fees && formatSol(fees.maxSendableLamports)} SOL.
+            </p>
+          ) : (
+            <p className="mt-2 text-[11px] leading-relaxed text-faint">
+              {connected
+                ? 'You approve the transaction in your wallet.'
+                : 'Connect your wallet to send.'}
+            </p>
+          )}
         </div>
 
         {/* History */}
@@ -256,6 +370,21 @@ export function TransferPanel() {
       </div>
     </Panel>
   );
+}
+
+/**
+ * Parse a user-typed SOL amount to lamports, or null if it is not a valid
+ * decimal. Returns null rather than NaN so callers must handle it explicitly.
+ */
+function safeParse(amount: string): number | null {
+  const trimmed = amount.trim();
+  if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === '' || trimmed === '.') return null;
+  try {
+    const lamports = solStringToLamports(trimmed);
+    return Number.isFinite(lamports) && lamports >= 0 ? lamports : null;
+  } catch {
+    return null;
+  }
 }
 
 function FlowCard({
