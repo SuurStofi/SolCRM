@@ -31,7 +31,13 @@ export async function handleRoute<T>(
     // debugging; only the UI gets the trimmed message. Never the raw object.
     safeLog.error(`[api] ${label} failed: ${redact(error)}`);
 
-    const status = error instanceof SafeError && error.status === 418 ? 503 : 502;
+    // 502 is the right default -- most failures here are Binance's. But a
+    // SafeError that carries a 4xx describes something the caller did (a
+    // duplicate record, a rejected argument), and reporting that as a bad
+    // gateway points debugging at the wrong system entirely.
+    const carried = error instanceof SafeError ? error.status : undefined;
+    const status =
+      carried === 418 ? 503 : carried !== undefined && carried <= 500 ? carried : 502;
 
     return NextResponse.json(
       {
