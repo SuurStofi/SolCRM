@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { binanceRequest, ensureTimeSynced } from './client';
+import { signedTimestamp } from './sign';
 import { SafeError } from './redact';
 
 /**
@@ -18,6 +19,12 @@ export interface ConvertQuote {
   validTimestamp: number;
   toAmount: string;
   fromAmount: string;
+  /**
+   * How long the quote still has, rather than when it expires. Derived here
+   * because `validTimestamp` is an instant in Binance's clock: a browser whose
+   * own clock is off would otherwise render a meaningless countdown.
+   */
+  validForMs: number;
 }
 
 /**
@@ -33,17 +40,25 @@ export async function getConvertQuote(
   fromAmount: string,
 ): Promise<ConvertQuote> {
   await ensureTimeSynced();
-  return binanceRequest<ConvertQuote>('/sapi/v1/convert/getQuote', {
-    method: 'POST',
-    signed: true,
-    params: {
-      fromAsset,
-      toAsset,
-      fromAmount,
-      walletType: 'SPOT',
-      validTime: '30s',
+  const quote = await binanceRequest<Omit<ConvertQuote, 'validForMs'>>(
+    '/sapi/v1/convert/getQuote',
+    {
+      method: 'POST',
+      signed: true,
+      params: {
+        fromAsset,
+        toAsset,
+        fromAmount,
+        walletType: 'SPOT',
+        validTime: '30s',
+      },
     },
-  });
+  );
+
+  return {
+    ...quote,
+    validForMs: Math.max(0, quote.validTimestamp - signedTimestamp()),
+  };
 }
 
 export interface ConvertAcceptance {
@@ -116,7 +131,9 @@ export async function getConvertPairLimits(
   );
   const pair = Array.isArray(result) ? result[0] : result;
   if (!pair) {
-    throw new SafeError(`Binance does not support converting ${fromAsset} to ${toAsset}.`);
+    throw new SafeError(`Binance does not support converting ${fromAsset} to ${toAsset}.`, {
+      status: 404,
+    });
   }
   return pair;
 }

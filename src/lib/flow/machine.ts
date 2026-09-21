@@ -41,8 +41,10 @@ const TRANSITIONS: Record<FlowState, readonly FlowState[]> = {
   CHAIN_CONFIRMED: ['BINANCE_CREDITED', 'CREDIT_TIMEOUT'],
   // Binance credited the deposit; SOL is now tradeable.
   BINANCE_CREDITED: ['CONVERT_QUOTED', 'CONVERT_FAILED'],
-  // Quote obtained; it expires quickly (10s default), hence its own state.
-  CONVERT_QUOTED: ['CONVERTED', 'CONVERT_FAILED', 'BINANCE_CREDITED'],
+  // Quote obtained; it expires quickly (30s), hence its own state. Reachable
+  // from itself because an expired quote is replaced in place rather than
+  // unwinding the flow to BINANCE_CREDITED first.
+  CONVERT_QUOTED: ['CONVERTED', 'CONVERT_FAILED', 'BINANCE_CREDITED', 'CONVERT_QUOTED'],
 
   // Terminal success.
   CONVERTED: [],
@@ -85,6 +87,8 @@ export function isFailure(state: FlowState): boolean {
  */
 export function resumeAction(state: FlowState): string | null {
   switch (state) {
+    case 'CHAIN_CONFIRMED':
+      return 'Check whether Binance has credited the deposit';
     case 'CREDIT_TIMEOUT':
       return 'Re-check Binance for the deposit credit';
     case 'CONVERT_FAILED':

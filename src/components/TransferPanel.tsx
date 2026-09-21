@@ -25,7 +25,12 @@ import {
   EmptyRow,
   ExtLink,
   RefreshButton,
+  ShowMore,
+  useSecondsLeft,
 } from './ui';
+
+/** Runs shown before the list has to be expanded. */
+const FLOW_PREVIEW = 6;
 
 interface FlowEvent {
   id: string;
@@ -57,6 +62,17 @@ interface Quote {
   toAmount: string;
   fromAmount: string;
   validTimestamp: number;
+  validForMs: number;
+}
+
+interface ActiveQuote {
+  flowId: string;
+  quote: Quote;
+  /**
+   * Browser-clock deadline, derived from the lifetime the server measured
+   * against Binance's clock rather than from Binance's absolute timestamp.
+   */
+  expiresAt: number;
 }
 
 async function api<T>(url: string, body?: unknown, method = 'POST'): Promise<T> {
@@ -78,8 +94,9 @@ export function TransferPanel() {
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [quote, setQuote] = useState<{ flowId: string; quote: Quote } | null>(null);
+  const [quote, setQuote] = useState<ActiveQuote | null>(null);
   const [fees, setFees] = useState<FeeBreakdown | null>(null);
+  const [showAllFlows, setShowAllFlows] = useState(false);
 
   const loadFees = useCallback(async () => {
     if (!publicKey) {
@@ -130,6 +147,7 @@ export function TransferPanel() {
     setBusy('transfer');
     setError(null);
     let flowId: string | null = null;
+    let signature: string | null = null;
     try {
       const { flow } = await api<{ flow: Flow }>('/api/flow/create', { amountSol: amount });
       flowId = flow.id;
@@ -137,13 +155,18 @@ export function TransferPanel() {
 
       if (!flow.depositAddress) throw new Error('No deposit address returned.');
 
-      const { signature } = await sendSolTransfer(
+      // Recorded before the wallet opens so the run reads as awaiting a
+      // signature rather than as an untouched draft while Phantom waits.
+      await api('/api/flow/submitted', { id: flow.id, signing: true });
+      await refresh();
+
+      ({ signature } = await sendSolTransfer(
         connection,
         publicKey,
         flow.depositAddress,
         amount,
         sendTransaction,
-      );
+      ));
 
       await api('/api/flow/submitted', { id: flow.id, signature });
       // Chain confirmation already happened inside sendSolTransfer.
@@ -155,11 +178,15 @@ export function TransferPanel() {
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Transfer failed.';
       setError(message);
-      // Record the failure so the flow does not sit in a misleading state.
+      // The signature decides how this is recorded: holding one means the SOL
+      // has already left the wallet, so the run must not be marked failed.
       if (flowId) {
-        await api('/api/flow/submitted', { id: flowId, failed: true }).catch(
-          () => undefined,
-        );
+        await api('/api/flow/submitted', {
+          id: flowId,
+          failed: true,
+          signature,
+          error: message,
+        }).catch(() => undefined);
         await refresh();
       }
     } finally {
@@ -197,7 +224,11 @@ export function TransferPanel() {
           id: flowId,
           action: 'quote',
         });
-        setQuote({ flowId, quote: result.quote });
+        setQuote({
+          flowId,
+          quote: result.quote,
+          expiresAt: Date.now() + result.quote.validForMs,
+        });
         await refresh();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Could not get a quote.');
@@ -352,12 +383,12 @@ export function TransferPanel() {
             <EmptyRow>No transfers yet</EmptyRow>
           ) : (
             <ul className="space-y-2.5">
-              {flows.slice(0, 6).map((flow) => (
+              {(showAllFlows ? flows : flows.slice(0, FLOW_PREVIEW)).map((flow) => (
                 <FlowCard
                   key={flow.id}
                   flow={flow}
                   busy={busy === flow.id}
-                  quote={quote?.flowId === flow.id ? quote.quote : null}
+                  quote={quote?.flowId === flow.id ? quote : null}
                   onCheckCredit={() => checkCredit(flow.id)}
                   onQuote={() => requestQuote(flow.id)}
                   onAccept={(quoteId) => acceptQuote(flow.id, quoteId)}
@@ -366,6 +397,12 @@ export function TransferPanel() {
               ))}
             </ul>
           )}
+          <ShowMore
+            expanded={showAllFlows}
+            total={flows.length}
+            previewCount={FLOW_PREVIEW}
+            onToggle={() => setShowAllFlows((current) => !current)}
+          />
         </div>
       </div>
     </Panel>
@@ -398,7 +435,7 @@ function FlowCard({
 }: {
   flow: Flow;
   busy: boolean;
-  quote: Quote | null;
+  quote: ActiveQuote | null;
   onCheckCredit: () => void;
   onQuote: () => void;
   onAccept: (quoteId: string) => void;
@@ -406,6 +443,8 @@ function FlowCard({
 }) {
   const failed = isFailure(flow.state);
   const resume = resumeAction(flow.state);
+  const secondsLeft = useSecondsLeft(quote?.expiresAt ?? null);
+  const expired = quote !== null && secondsLeft <= 0;
 
   return (
     <li className="rounded-lg border border-border bg-surface-subtle px-3.5 py-3">
@@ -452,23 +491,30 @@ function FlowCard({
           triggered by the same click that fetched the rate. */}
       {quote && (
         <div className="mt-3 rounded-lg border border-accent/30 bg-accent/5 px-3 py-2.5">
-          <p className="text-xs">
-            <span className="font-semibold">{quote.fromAmount} SOL</span> →{' '}
-            <span className="font-semibold">{quote.toAmount} USDT</span>
-            <span className="ml-1.5 text-faint">@ {quote.ratio}</span>
-          </p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs">
+              <span className="font-semibold">{quote.quote.fromAmount} SOL</span> →{' '}
+              <span className="font-semibold">{quote.quote.toAmount} USDT</span>
+              <span className="ml-1.5 text-faint">@ {quote.quote.ratio}</span>
+            </p>
+            <Chip tone={expired ? 'bad' : secondsLeft <= 10 ? 'warn' : 'accent'}>
+              {expired ? 'expired' : `${secondsLeft}s left`}
+            </Chip>
+          </div>
           <p className="mt-1 text-[11px] text-faint">
-            This executes immediately and cannot be undone.
+            {expired
+              ? 'This rate is no longer valid. Request a new quote to convert.'
+              : 'This executes immediately and cannot be undone.'}
           </p>
           <div className="mt-2 flex gap-2">
             <button
               type="button"
-              onClick={() => onAccept(quote.quoteId)}
+              onClick={expired ? onQuote : () => onAccept(quote.quote.quoteId)}
               disabled={busy}
               className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {busy && <Spinner className="border-t-accent-fg" />}
-              Confirm convert
+              {expired ? 'New quote' : 'Confirm convert'}
             </button>
             <button
               type="button"

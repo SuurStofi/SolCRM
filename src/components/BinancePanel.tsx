@@ -11,7 +11,11 @@ import {
   Chip,
   Skeleton,
   EmptyRow,
+  ShowMore,
 } from './ui';
+
+/** Deposits shown before the list has to be expanded. */
+const DEPOSIT_PREVIEW = 5;
 
 interface Balance {
   asset: string;
@@ -64,11 +68,27 @@ async function fetchJson<T>(url: string): Promise<T> {
   return body.data;
 }
 
+async function postJson<T>(url: string, payload: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const body = (await response.json()) as ApiResponse<T>;
+  if (!body.ok || body.data === undefined) {
+    throw new Error(body.error ?? 'Request failed');
+  }
+  return body.data;
+}
+
 export function BinancePanel() {
   const [account, setAccount] = useState<AccountSnapshot | null>(null);
   const [deposits, setDeposits] = useState<DepositRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [redeeming, setRedeeming] = useState<string | null>(null);
+  const [redeemNote, setRedeemNote] = useState<{ text: string; ok: boolean } | null>(null);
+  const [showAllDeposits, setShowAllDeposits] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,6 +109,33 @@ export function BinancePanel() {
       setLoading(false);
     }
   }, []);
+
+  /**
+   * Redeem the whole Flexible position for an asset. Binance settles a FAST
+   * redemption within seconds but not synchronously, so the reloaded balances
+   * can still show the Earn position for a moment.
+   */
+  const redeem = useCallback(
+    async (asset: string) => {
+      setRedeeming(asset);
+      setRedeemNote(null);
+      try {
+        const result = await postJson<{ redeemed: string }>('/api/binance/earn/redeem', {
+          asset,
+        });
+        setRedeemNote({ text: `Redeeming ${result.redeemed} ${asset} to Spot.`, ok: true });
+        await load();
+      } catch (cause) {
+        setRedeemNote({
+          text: cause instanceof Error ? cause.message : `Could not redeem ${asset}.`,
+          ok: false,
+        });
+      } finally {
+        setRedeeming(null);
+      }
+    },
+    [load],
+  );
 
   useEffect(() => {
     // Deferred to a microtask so the initial setLoading(true) inside load()
@@ -120,6 +167,18 @@ export function BinancePanel() {
               allowlisted.
             </p>
           </ErrorNote>
+        )}
+
+        {redeemNote && (
+          <div
+            className={`rounded-lg border px-3.5 py-2.5 text-xs leading-relaxed ${
+              redeemNote.ok
+                ? 'border-good/30 bg-good-bg text-good'
+                : 'border-bad/30 bg-bad-bg text-bad'
+            }`}
+          >
+            {redeemNote.text}
+          </div>
         )}
 
         {account && (
@@ -159,18 +218,30 @@ export function BinancePanel() {
                     // until redeemed, so flag them rather than showing a
                     // ticker that looks spendable.
                     const isEarn = balance.asset.startsWith('LD');
+                    const baseAsset = isEarn ? balance.asset.slice(2) : balance.asset;
                     return (
                       <Row key={balance.asset}>
                         <span className="flex items-center gap-1.5 font-medium">
-                          {isEarn ? balance.asset.slice(2) : balance.asset}
+                          {baseAsset}
                           {isEarn && <Chip tone="warn">Earn</Chip>}
                         </span>
-                        <span className="text-right">
+                        <span className="flex items-center justify-end gap-2 text-right">
                           <span className="tabular font-medium">{balance.free}</span>
                           {Number(balance.locked) > 0 && (
-                            <span className="tabular ml-2 text-xs text-warn">
+                            <span className="tabular text-xs text-warn">
                               +{balance.locked} locked
                             </span>
+                          )}
+                          {isEarn && (
+                            <button
+                              type="button"
+                              onClick={() => redeem(baseAsset)}
+                              disabled={redeeming !== null || loading}
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-foreground transition hover:border-border-strong disabled:opacity-40"
+                            >
+                              {redeeming === baseAsset && <Spinner />}
+                              Redeem to Spot
+                            </button>
                           )}
                         </span>
                       </Row>
@@ -186,7 +257,7 @@ export function BinancePanel() {
               <SectionLabel>Recent SOL deposits</SectionLabel>
               {deposits.length > 0 ? (
                 <div>
-                  {deposits.slice(0, 5).map((deposit) => (
+                  {(showAllDeposits ? deposits : deposits.slice(0, DEPOSIT_PREVIEW)).map((deposit) => (
                     <Row key={deposit.txId || deposit.insertTime}>
                       <span className="tabular font-medium">
                         {deposit.amount} {deposit.coin}
@@ -209,6 +280,12 @@ export function BinancePanel() {
               ) : (
                 <EmptyRow>No recent SOL deposits</EmptyRow>
               )}
+              <ShowMore
+                expanded={showAllDeposits}
+                total={deposits.length}
+                previewCount={DEPOSIT_PREVIEW}
+                onToggle={() => setShowAllDeposits((current) => !current)}
+              />
             </div>
           </>
         )}
