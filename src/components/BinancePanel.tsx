@@ -13,6 +13,7 @@ import {
   EmptyRow,
   ShowMore,
 } from './ui';
+import { useAuth } from './AuthProvider';
 
 /** Deposits shown before the list has to be expanded. */
 const DEPOSIT_PREVIEW = 5;
@@ -82,6 +83,9 @@ async function postJson<T>(url: string, payload: unknown): Promise<T> {
 }
 
 export function BinancePanel() {
+  const { account: user } = useAuth();
+  // Changes when a key is added or replaced, so balances reload for the new key.
+  const keyVersion = user?.binance?.updatedAt ?? null;
   const [account, setAccount] = useState<AccountSnapshot | null>(null);
   const [deposits, setDeposits] = useState<DepositRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,6 +95,14 @@ export function BinancePanel() {
   const [showAllDeposits, setShowAllDeposits] = useState(false);
 
   const load = useCallback(async () => {
+    if (keyVersion === null) {
+      // No key yet: nothing to ask Binance, and no stale data from a removed key.
+      setAccount(null);
+      setDeposits([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -108,7 +120,7 @@ export function BinancePanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [keyVersion]);
 
   /**
    * Redeem the whole Flexible position for an asset. Binance settles a FAST
@@ -155,16 +167,22 @@ export function BinancePanel() {
       title="Binance"
       subtitle="Spot account · read only"
       icon={<BinanceMark />}
-      action={<RefreshButton onClick={load} loading={loading} />}
+      action={keyVersion !== null && <RefreshButton onClick={load} loading={loading} />}
     >
       <div className="space-y-6">
+        {keyVersion === null && (
+          <EmptyRow>
+            No Binance API key linked yet. Add yours under Account to see balances and convert —
+            each account uses its own Binance.
+          </EmptyRow>
+        )}
+
         {error && (
           <ErrorNote title="Could not load Binance account">
             <p>{error}</p>
             <p className="mt-2 opacity-80">
-              Check that <code className="font-mono">.env.local</code> has your key and
-              secret, that the key has &quot;Enable Reading&quot;, and that your IP is
-              allowlisted.
+              Check that the key saved under Account still exists in Binance, has
+              &quot;Enable Reading&quot;, and that this server&apos;s IP is allowlisted.
             </p>
           </ErrorNote>
         )}
@@ -240,7 +258,7 @@ export function BinancePanel() {
                               className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-foreground transition hover:border-border-strong disabled:opacity-40"
                             >
                               {redeeming === baseAsset && <Spinner />}
-                              Redeem to Spot
+                              <span>Redeem to Spot</span>
                             </button>
                           )}
                         </span>

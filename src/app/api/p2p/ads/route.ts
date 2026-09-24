@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { searchAds, p2pBoardUrl, type TradeSide } from '@/lib/binance/p2p';
-import { handleRoute } from '@/lib/binance/route-helpers';
+import { userRoute } from '@/lib/auth/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +11,9 @@ const PAY_METHOD = /^[A-Za-z0-9_-]{1,40}$/;
  * Search public P2P ads. Unauthenticated upstream, but proxied here anyway so
  * the browser is not making cross-origin calls to Binance and so the response
  * is normalised before it reaches the UI.
+ *
+ * Signed-in only: every call spends this server's IP rate limit, which all
+ * accounts share, so an anonymous caller could exhaust it for everyone.
  */
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
@@ -44,7 +47,7 @@ export async function GET(request: Request) {
 
   const side = tradeType as TradeSide;
 
-  return handleRoute('GET /api/p2p/ads', async () => ({
+  return userRoute(request, 'GET /api/p2p/ads', async () => ({
     ads: await searchAds({ asset, fiat, tradeType: side, payMethod, transAmount }),
     boardUrl: p2pBoardUrl(asset, fiat, side),
   }));

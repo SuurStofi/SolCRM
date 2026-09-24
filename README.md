@@ -1,6 +1,8 @@
 # SolCRM
 
-Personal single-user dashboard: Solana wallet → Binance → P2P.
+Version **0.2.0** — see [CHANGELOG.md](CHANGELOG.md).
+
+Multi-account dashboard: Solana wallet → Binance → P2P. You sign in with a Solana wallet, link more wallets to the same account, and exchange through **your own** Binance account via your own API key.
 
 **Phases 1 and 2 are complete** (read-only dashboard; transfer and convert). **Phase 3 is partly built:** ad discovery and the local order archive work; order-status polling is deliberately not implemented — see below.
 
@@ -10,30 +12,63 @@ Personal single-user dashboard: Solana wallet → Binance → P2P.
 
 ```bash
 npm install
-cp .env.example .env.local   # then fill it in, see below
-npx prisma migrate dev       # creates prisma/dev.db
+cp .env.example .env.local   # then set APP_ENCRYPTION_KEY, see below
+npx prisma migrate dev       # creates / upgrades prisma/dev.db
 npm run dev                  # http://localhost:3000
 ```
 
-### 1. Binance API key
+Needs Node ≥ 20.9 (Next 16). `better-sqlite3` is a native module built for whichever Node ran `npm install`; switching Node versions afterwards needs `npm rebuild better-sqlite3`.
 
-Create one at **Binance → Account → API Management**.
+### 1. Encryption key (required)
 
-Permissions — enable **only** these:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
 
-| Permission | Phase 1 | Phase 2 | Notes |
-|---|---|---|---|
-| Enable Reading | ✅ required | ✅ required | balances, deposits, deposit address |
-| Enable Spot & Margin Trading | ❌ leave off | ✅ required | needed for Convert only |
-| **Enable Withdrawals** | 🚫 **OFF** | 🚫 **OFF** | this app never withdraws — leaving it on is pure downside |
+Put the output in `.env.local` as `APP_ENCRYPTION_KEY`. It encrypts every user's stored Binance key. **Back it up with `prisma/dev.db`** — if it is lost or changed, stored keys become unreadable and everyone has to paste theirs again.
 
-Also set **"Restrict access to trusted IPs only"** to your own IP if you run from a fixed location. Binance also expires unrestricted keys after 90 days, so an IP allowlist saves you re-issuing.
+`BINANCE_API_KEY` / `BINANCE_API_SECRET` in `.env.local` are **no longer read**. Each account adds its own key in the app.
 
-Paste the key and secret into `.env.local`. That file is gitignored and was never committed.
+### 2. Accounts
 
-> Heads-up on Convert: several developers report `-1002 not authorized` on `getQuote` even with Spot & Margin enabled, sometimes needing a fresh key. Phase 2 surfaces that error verbatim rather than hiding it.
+Open the app, connect Phantom, press **Sign in**. The wallet signs a one-time text message (not a transaction — nothing is broadcast, no fee). A wallet signing in for the first time gets a new account.
 
-### 2. Solana RPC (optional — works out of the box)
+- **Link more wallets:** switch to the other wallet in the extension, then press *Link this wallet* under Account. That wallet signs too, proving it is yours. Any linked wallet can sign in.
+- **Unlink:** allowed while at least one other wallet remains — the last wallet is the only way back in, since there is no password.
+- A wallet belongs to one account. Linking a wallet already on another account is refused rather than moved.
+
+### 3. Your Binance API key
+
+Create one at **Binance → Account → API Management** and paste it under **Account → Binance API key**.
+
+| Permission | Needed for | Notes |
+|---|---|---|
+| Enable Reading | ✅ everything | balances, deposits, deposit address |
+| Enable Spot & Margin Trading | ✅ Convert (sell and buy) | leave off if you only want to look |
+| **Enable Withdrawals** | only with **auto-withdraw on** | refused while auto-withdraw is off; when on, the key **must** also be IP-restricted |
+
+The key is checked against Binance before it is saved, stored encrypted (AES-256-GCM, bound to your account id), and never sent back to the browser — the UI only ever sees its last 4 characters.
+
+If you restrict the key to trusted IPs, allowlist **the IP of the machine running this server**, not your own browser's.
+
+> Heads-up on Convert: several developers report `-1002 not authorized` on `getQuote` even with Spot & Margin enabled, sometimes needing a fresh key. The error is surfaced verbatim rather than hidden.
+
+### 4. Buying SOL
+
+**Buy SOL** spends USDT on your Binance with Convert (quote → confirm, like selling). Where the SOL goes is a per-account setting under **Account → Bought SOL**:
+
+| Auto-withdraw | What happens | Key requirement |
+|---|---|---|
+| **Off** (default) | SOL stays on your Binance balance; withdraw it yourself in Binance | withdrawals must be **off** |
+| **On** | after the buy, the server withdraws the SOL to the linked wallet you picked | withdrawals **on** + **IP-restricted** to this server |
+
+- Withdrawals only ever go to a wallet linked to the account.
+- Turning auto-withdraw **off** is refused while the stored key can still withdraw (checked live against Binance), so the setting never leaves a withdrawal-capable key behind.
+- A failed withdrawal never undoes the buy: the SOL stays on Binance and the purchase offers *Retry withdrawal*.
+- **No double sends.** The withdrawal is recorded (with its own `withdrawOrderId`) *before* it is sent; 5xx answers are not retried; a retry first looks the previous attempt up on Binance and adopts it if it did not fail; a double click loses a compare-and-set on the state. Likewise a buy whose accept got no answer is never re-quoted until its order is checked.
+- **Not verified against a live key yet:** `/sapi/v1/capital/withdraw/apply`, `/withdraw/history` filtered by `withdrawOrderId`, and `/capital/config/getall`. In particular, whether Binance deducts the network fee from `amount` or charges it on top is unconfirmed — the app withdraws `min(bought, free SOL)`, so if the fee is charged on top, the first withdrawal may be refused for balance and needs a retry. Try it with a small amount first.
+
+### 5. Solana RPC (optional — works out of the box)
 
 **No configuration needed.** Wallet RPC calls route through `/api/solana/rpc`, a server-side proxy.
 
@@ -51,9 +86,14 @@ SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
 
 ## Security model
 
+- **Wallet sign-in (SIWS).** The server issues a message naming the site, the wallet and a random nonce; the wallet signs it; the server verifies the ed25519 signature. Each challenge is deleted by the first verification attempt and expires after 5 minutes, so a captured signature cannot be replayed.
+- **Sessions.** Random 256-bit token in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` in production); only its SHA-256 is stored. Writes from another origin are refused as well.
+- **Per-user isolation.** Every transfer run and P2P record belongs to an account; another user's id answers as not found. A transfer can only be started from a wallet linked to the account.
+- **Per-user Binance keys.** Signed Binance calls only run inside `withBinanceCredentials` with the caller's own decrypted key (`AsyncLocalStorage`); a signed call outside it fails instead of falling back to any other key.
 - **Non-custodial wallet.** The app never sees your Solana private key. It reads public chain data and (in Phase 2) builds unsigned transactions you approve in Phantom.
-- **Binance secret is server-side only.** `src/lib/binance/client.ts` imports `server-only`, so importing it from a client component is a build error, not a runtime leak. The secret never reaches the browser.
+- **Binance secrets are server-side only.** `src/lib/binance/client.ts` imports `server-only`, so importing it from a client component is a build error, not a runtime leak. The secret never reaches the browser.
 - **Secrets scrubbed from all output.** Every log line and error passes through `redact.ts`, which strips API keys, secrets, and `signature=` values — including from stack traces and network error objects. Verified against signed URLs, header echoes, JSON bodies, stack traces, and env dumps.
+- **Shared IP budget.** Most Binance limits are per IP, and all accounts share this server's IP — one busy account can slow the others, and an HTTP 418 ban stops everyone. P2P ad search therefore requires sign-in too.
 - **Rate limits respected, and visible.** HTTP 429 backs off honoring `Retry-After`; HTTP 418 (IP ban) is a hard stop that refuses all further calls, since retrying while banned extends the ban. The dashboard polls `/api/binance/status` and shows a banner while either is in effect — without it a backoff is indistinguishable from a hung spinner.
 - **Failed connections are retried, completed ones are not.** A request that never reached Binance (`UND_ERR_CONNECT_TIMEOUT`, `ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`) is safe to re-send and is retried. Anything that failed mid-flight is not: `acceptQuote` and the Earn redemption execute on receipt, so re-sending one that may have landed is worse than reporting a failure.
 - **Clock skew handled.** Server time is sampled once per process and the offset applied to every signed request.
@@ -97,13 +137,27 @@ Phase 3 is therefore scoped to **discovery + local record-keeping**, not full li
 ```
 src/
 ├─ app/
-│  ├─ page.tsx                    dashboard: Wallet | Binance | Transfer | P2P
+│  ├─ page.tsx                    shell; Dashboard picks sign-in or panels
 │  └─ api/                        server-only routes
+│     ├─ auth/
+│     │  ├─ challenge/            one-time message to sign (LOGIN / LINK)
+│     │  ├─ verify/               check signature; start session or link wallet
+│     │  ├─ logout/
+│     │  └─ me/                   account summary (no secrets)
+│     ├─ account/
+│     │  ├─ wallets/              unlink a wallet
+│     │  ├─ binance/              verify + store / remove own API key
+│     │  └─ settings/             auto-withdraw on/off
 │     ├─ binance/
 │     │  ├─ account/              balances + key permissions
 │     │  ├─ deposits/             recent deposit records
 │     │  ├─ deposit-address/      SOL deposit address
 │     │  └─ earn/redeem/          Simple Earn Flexible -> Spot
+│     ├─ buy/
+│     │  ├─ info/                 spendable USDT, convert minimum, withdrawal fee
+│     │  ├─ convert/              quote / accept (irreversible) / status
+│     │  ├─ withdraw/             send (or retry) / check a withdrawal
+│     │  └─ list/                 recent purchases
 │     ├─ flow/                    transfer/convert run lifecycle
 │     │  ├─ create/               deposit address + intent record
 │     │  ├─ submitted/            signing leg: awaiting / broadcast / failed
@@ -115,17 +169,29 @@ src/
 │     │  └─ orders/               local order archive (GET/POST/PATCH)
 │     └─ solana/rpc/              RPC proxy (see above)
 ├─ components/
+│  ├─ AuthProvider.tsx            session state, sign-in / link via signMessage
+│  ├─ Dashboard.tsx               sign-in screen or the panels
+│  ├─ AccountPanel.tsx            linked wallets, Binance key
 │  ├─ WalletProvider.tsx          wallet adapter, client-side only
 │  ├─ WalletPanel.tsx             SOL balance, SPL tokens, tx history
 │  ├─ BinancePanel.tsx            balances, permissions, deposits, Earn redeem
-│  ├─ TransferPanel.tsx           send SOL, track the run, convert to USDT
+│  ├─ TransferPanel.tsx           sell: send SOL, track the run, convert to USDT
+│  ├─ BuyPanel.tsx                buy: USDT -> SOL, optional withdrawal
 │  ├─ P2PAdsPanel.tsx             ad discovery
 │  ├─ P2POrdersPanel.tsx          manual order archive
 │  └─ ui.tsx                      shared primitives
 └─ lib/
+   ├─ auth/
+   │  ├─ siws.ts                  challenges + ed25519 verification
+   │  ├─ session.ts               cookie sessions
+   │  ├─ encryption.ts            AES-256-GCM for stored keys
+   │  └─ route.ts                 userRoute(): session, origin, user's Binance key
+   ├─ account/store.ts            users and linked wallets
    ├─ binance/
    │  ├─ sign.ts                  HMAC + percent-encoding + clock skew
-   │  ├─ client.ts                429 backoff, 418 hard stop, error mapping
+   │  ├─ client.ts                429 backoff, 418 hard stop, request-scoped credentials
+   │  ├─ credentials.ts           per-user key storage (encrypted) + key policy
+   │  ├─ withdraw.ts              SOL withdrawal: config, apply, history
    │  ├─ account.ts               read-only queries
    │  ├─ convert.ts               quote / accept / order status
    │  ├─ earn.ts                  Flexible positions + redemption
@@ -135,6 +201,11 @@ src/
    ├─ solana/
    │  ├─ read.ts                  balance, SPL tokens, tx history
    │  └─ transfer.ts              fees, max sendable, send + confirm
+   ├─ buy/
+   │  ├─ machine.ts               purchase state machine
+   │  ├─ store.ts                 persistence, compare-and-set transitions
+   │  └─ withdraw.ts              withdrawal leg (no double sends)
+   ├─ decimal.ts                  exact decimal-string math
    ├─ flow/
    │  ├─ machine.ts               transfer state machine
    │  └─ store.ts                 persistence + audited transitions
@@ -147,6 +218,14 @@ The `TransferFlow` state machine (`src/lib/flow/machine.ts`) already models the 
 
 ## Notes
 
-- **Back up `prisma/dev.db`.** It is a single SQLite file with no redundancy, and it is the only record of transfer flows — and, once Phase 3 lands, of P2P orders, which exist nowhere else at all. Binance and the chain can tell you a deposit happened; neither can rebuild which run it belonged to or what you noted about it. Copy it somewhere outside the repo, along with `.env.local`, before the history is worth keeping.
+- **Legacy records.** Runs and P2P records made before accounts existed have no owner and are hidden from everyone. To adopt them into your account, sign in once, then:
+
+  ```bash
+  npx prisma db execute --stdin <<'SQL'
+  UPDATE TransferFlow SET userId = (SELECT userId FROM Wallet WHERE address = 'YOUR_WALLET_ADDRESS') WHERE userId IS NULL;
+  UPDATE P2POrder     SET userId = (SELECT userId FROM Wallet WHERE address = 'YOUR_WALLET_ADDRESS') WHERE userId IS NULL;
+  SQL
+  ```
+- **Back up `prisma/dev.db` together with `APP_ENCRYPTION_KEY`.** It is a single SQLite file with no redundancy, and it is the only record of accounts, transfer flows — and, once Phase 3 lands, of P2P orders, which exist nowhere else at all. Binance and the chain can tell you a deposit happened; neither can rebuild which run it belonged to or what you noted about it. Copy it somewhere outside the repo, along with `.env.local`, before the history is worth keeping.
 - `AGENTS.md` / `CLAUDE.md` are generated by Next.js 16; set `agentRules: false` in `next.config.ts` to disable.
 - The Prisma datasource URL lives in `prisma.config.ts` (Prisma 7 moved it out of `schema.prisma`).

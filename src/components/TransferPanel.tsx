@@ -28,6 +28,7 @@ import {
   ShowMore,
   useSecondsLeft,
 } from './ui';
+import { useAuth } from './AuthProvider';
 
 /** Runs shown before the list has to be expanded. */
 const FLOW_PREVIEW = 6;
@@ -89,6 +90,11 @@ async function api<T>(url: string, body?: unknown, method = 'POST'): Promise<T> 
 export function TransferPanel() {
   const { connection } = useConnection();
   const { publicKey, connected, sendTransaction } = useWallet();
+  const { account, connectedWalletLinked } = useAuth();
+  const hasBinanceKey = Boolean(account?.binance);
+  // Runs are recorded against the account, so only a wallet proven to belong
+  // to it may send. The server enforces this too; this just says so early.
+  const canSend = connected && connectedWalletLinked && hasBinanceKey;
 
   const [flows, setFlows] = useState<Flow[]>([]);
   const [amount, setAmount] = useState('');
@@ -149,7 +155,10 @@ export function TransferPanel() {
     let flowId: string | null = null;
     let signature: string | null = null;
     try {
-      const { flow } = await api<{ flow: Flow }>('/api/flow/create', { amountSol: amount });
+      const { flow } = await api<{ flow: Flow }>('/api/flow/create', {
+        amountSol: amount,
+        fromAddress: publicKey.toBase58(),
+      });
       flowId = flow.id;
       await refresh();
 
@@ -259,7 +268,7 @@ export function TransferPanel() {
 
   return (
     <Panel
-      title="Transfer & Convert"
+      title="Sell SOL"
       subtitle="SOL → Binance → USDT"
       icon={<ArrowsMark />}
       action={
@@ -297,14 +306,14 @@ export function TransferPanel() {
                 onChange={(event) => setAmount(event.target.value)}
                 inputMode="decimal"
                 placeholder="0.00"
-                disabled={!connected || busy !== null}
+                disabled={!canSend || busy !== null}
                 className="tabular w-full bg-transparent py-2 text-sm outline-none placeholder:text-faint disabled:opacity-50"
               />
               <span className="mr-2 text-xs font-medium text-faint">SOL</span>
               <button
                 type="button"
                 onClick={() => fees && setAmount(formatSol(fees.maxSendableLamports))}
-                disabled={!connected || busy !== null || !fees || nothingSendable}
+                disabled={!canSend || busy !== null || !fees || nothingSendable}
                 className="shrink-0 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted transition hover:border-border-strong hover:text-foreground disabled:opacity-40"
               >
                 Max
@@ -314,7 +323,7 @@ export function TransferPanel() {
               type="button"
               onClick={startTransfer}
               disabled={
-                !connected ||
+                !canSend ||
                 busy !== null ||
                 !amount ||
                 amountInvalid ||
@@ -324,7 +333,7 @@ export function TransferPanel() {
               className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {busy === 'transfer' && <Spinner className="border-t-accent-fg" />}
-              Send
+              <span>Send</span>
             </button>
           </div>
 
@@ -369,9 +378,13 @@ export function TransferPanel() {
             </p>
           ) : (
             <p className="mt-2 text-[11px] leading-relaxed text-faint">
-              {connected
-                ? 'You approve the transaction in your wallet.'
-                : 'Connect your wallet to send.'}
+              {!connected
+                ? 'Connect your wallet to send.'
+                : !connectedWalletLinked
+                  ? 'The connected wallet is not linked to your account — link it under Account to send from it.'
+                  : !hasBinanceKey
+                    ? 'Add your Binance API key under Account — SOL is sent to your own Binance deposit address.'
+                    : 'You approve the transaction in your wallet.'}
             </p>
           )}
         </div>
@@ -514,7 +527,7 @@ function FlowCard({
               className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {busy && <Spinner className="border-t-accent-fg" />}
-              {expired ? 'New quote' : 'Confirm convert'}
+              <span>{expired ? 'New quote' : 'Confirm convert'}</span>
             </button>
             <button
               type="button"
@@ -541,7 +554,7 @@ function FlowCard({
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:border-border-strong disabled:opacity-40"
           >
             {busy && <Spinner />}
-            {resume}
+            <span>{resume}</span>
           </button>
         </div>
       )}

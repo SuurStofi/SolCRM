@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { handleRoute } from '@/lib/binance/route-helpers';
+import { userRoute } from '@/lib/auth/route';
 import { getFlow, transition, noteError } from '@/lib/flow/store';
 import type { FlowState } from '@/lib/flow/machine';
 
@@ -38,14 +38,14 @@ export async function POST(request: Request) {
   // for minutes, and the run should not read as an untouched draft while they
   // do. This is also what makes the later move to SUBMITTED a legal one.
   if (body.signing) {
-    return handleRoute('POST /api/flow/submitted (signing)', () =>
-      transition(id, 'AWAITING_SIGNATURE', { lastError: null }, 'Sent to wallet for signature'),
+    return userRoute(request, 'POST /api/flow/submitted (signing)', (user) =>
+      transition(user.id, id, 'AWAITING_SIGNATURE', { lastError: null }, 'Sent to wallet for signature'),
     );
   }
 
   if (body.failed) {
-    return handleRoute('POST /api/flow/submitted (failed)', () =>
-      recordFailure(id, String(body.signature ?? ''), reason),
+    return userRoute(request, 'POST /api/flow/submitted (failed)', (user) =>
+      recordFailure(user.id, id, String(body.signature ?? ''), reason),
     );
   }
 
@@ -57,8 +57,9 @@ export async function POST(request: Request) {
     );
   }
 
-  return handleRoute('POST /api/flow/submitted', () =>
+  return userRoute(request, 'POST /api/flow/submitted', (user) =>
     transition(
+      user.id,
       id,
       'SUBMITTED',
       { txSignature: signature, lastError: null },
@@ -77,8 +78,13 @@ export async function POST(request: Request) {
  * so a run that has a signature is never marked failed, it is advanced to
  * where the deposit can be chased instead.
  */
-async function recordFailure(id: string, reportedSignature: string, reason: string | null) {
-  const flow = await getFlow(id);
+async function recordFailure(
+  userId: string,
+  id: string,
+  reportedSignature: string,
+  reason: string | null,
+) {
+  const flow = await getFlow(userId, id);
   if (!flow) throw new Error('Flow not found');
 
   const state = flow.state as FlowState;
@@ -88,19 +94,20 @@ async function recordFailure(id: string, reportedSignature: string, reason: stri
 
   if (!signature) {
     if (state === 'DRAFT' || state === 'AWAITING_SIGNATURE') {
-      return transition(id, 'CHAIN_FAILED', { lastError: reason }, 'Transaction was not submitted');
+      return transition(userId, id, 'CHAIN_FAILED', { lastError: reason }, 'Transaction was not submitted');
     }
     // Past the broadcast point with no signature on record: no state change
     // here can be justified, so only the reason is kept.
-    return noteError(id, reason ?? 'Transfer failed');
+    return noteError(userId, id, reason ?? 'Transfer failed');
   }
 
   if (state === 'AWAITING_SIGNATURE') {
-    await transition(id, 'SUBMITTED', { txSignature: signature }, 'Broadcast to network');
+    await transition(userId, id, 'SUBMITTED', { txSignature: signature }, 'Broadcast to network');
   }
 
   if (state === 'AWAITING_SIGNATURE' || state === 'SUBMITTED') {
     return transition(
+      userId,
       id,
       'CHAIN_CONFIRMED',
       { chainConfirmedAt: new Date(), lastError: reason },
@@ -108,5 +115,5 @@ async function recordFailure(id: string, reportedSignature: string, reason: stri
     );
   }
 
-  return noteError(id, reason ?? 'Transfer failed');
+  return noteError(userId, id, reason ?? 'Transfer failed');
 }

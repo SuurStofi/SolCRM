@@ -188,7 +188,7 @@ export function P2POrdersPanel() {
             className="mt-2 inline-flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
           >
             {saving && <Spinner className="border-t-accent-fg" />}
-            Archive order
+            <span>Archive order</span>
           </button>
         </div>
 

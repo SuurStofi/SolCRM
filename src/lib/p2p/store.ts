@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { prisma } from '../db';
+import { SafeError } from '../binance/redact';
 
 /**
  * Local archive of P2P trades.
@@ -38,13 +39,18 @@ export interface OrderInput {
   notes?: string | null;
 }
 
-export async function listOrders(limit = 50) {
-  return prisma.p2POrder.findMany({ orderBy: { createdAt: 'desc' }, take: limit });
+export async function listOrders(userId: string, limit = 50) {
+  return prisma.p2POrder.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+  });
 }
 
-export async function createOrder(input: OrderInput) {
+export async function createOrder(userId: string, input: OrderInput) {
   return prisma.p2POrder.create({
     data: {
+      userId,
       orderNumber: input.orderNumber,
       fiat: input.fiat,
       adNo: input.adNo ?? null,
@@ -66,9 +72,14 @@ export async function createOrder(input: OrderInput) {
  * did come from Binance.
  */
 export async function updateOrder(
+  userId: string,
   id: string,
   patch: { status?: P2PStatus; notes?: string | null },
 ) {
+  // Ownership is checked first: another user's order answers as not found.
+  const existing = await prisma.p2POrder.findFirst({ where: { id, userId } });
+  if (!existing) throw new SafeError('Order not found.', { status: 404 });
+
   return prisma.p2POrder.update({
     where: { id },
     data: {

@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { SafeError, redact, safeLog, registerSecret } from './redact';
 import {
   buildQueryString,
@@ -12,8 +13,8 @@ import {
 /**
  * Server-side-only Binance REST client.
  *
- * This module must never be imported from a client component -- it reads the
- * API secret from the environment. The `server-only` import above turns a
+ * This module must never be imported from a client component -- it handles
+ * users' decrypted API secrets. The `server-only` import above turns a
  * mistaken client import into a build error rather than a credential leak.
  */
 
@@ -26,21 +27,44 @@ const SPOT_BASE = 'https://api.binance.com';
  */
 export const P2P_PUBLIC_BASE = 'https://www.binance.com';
 
-function credentials(): { apiKey: string; apiSecret: string } {
-  const apiKey = process.env.BINANCE_API_KEY;
-  const apiSecret = process.env.BINANCE_API_SECRET;
-  if (!apiKey || !apiSecret) {
-    // 500, not the 502 default: nothing was sent to Binance, so this is this
-    // server being unconfigured rather than the exchange failing.
+export interface BinanceCredentials {
+  apiKey: string;
+  apiSecret: string;
+}
+
+/**
+ * Credentials of the user the current request is acting for.
+ *
+ * Each account brings its own Binance key, so the key is request-scoped rather
+ * than read from the environment. AsyncLocalStorage carries it through every
+ * await in the handler without threading a parameter through account.ts,
+ * convert.ts and earn.ts -- and a signed call made outside
+ * withBinanceCredentials fails loudly instead of falling back to some other
+ * account's key.
+ */
+const credentialContext = new AsyncLocalStorage<BinanceCredentials>();
+
+export function withBinanceCredentials<T>(
+  creds: BinanceCredentials,
+  work: () => Promise<T>,
+): Promise<T> {
+  // Ensure these values are scrubbed from any future log output.
+  registerSecret(creds.apiKey);
+  registerSecret(creds.apiSecret);
+  return credentialContext.run(creds, work);
+}
+
+function credentials(): BinanceCredentials {
+  const creds = credentialContext.getStore();
+  if (!creds) {
+    // 409, not the 502 default: nothing was sent to Binance; the account
+    // simply has no key yet.
     throw new SafeError(
-      'Binance API credentials are not configured. Copy .env.example to .env.local and fill in BINANCE_API_KEY / BINANCE_API_SECRET.',
-      { status: 500 },
+      'No Binance API key is linked to this account. Add one under Account → Binance API key.',
+      { status: 409 },
     );
   }
-  // Ensure these values are scrubbed from any future log output.
-  registerSecret(apiKey);
-  registerSecret(apiSecret);
-  return { apiKey, apiSecret };
+  return creds;
 }
 
 /**
@@ -108,13 +132,25 @@ interface RequestOptions {
   signed?: boolean;
   params?: Params;
   base?: string;
+  /**
+   * Set for calls that move money and may have executed even when Binance
+   * answers 5xx (withdrawals). Such a failure is reported, never re-sent:
+   * the caller has to find out what happened before trying again.
+   */
+  noServerRetry?: boolean;
 }
 
 export async function binanceRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { method = 'GET', signed = false, params = {}, base = SPOT_BASE } = options;
+  const {
+    method = 'GET',
+    signed = false,
+    params = {},
+    base = SPOT_BASE,
+    noServerRetry = false,
+  } = options;
 
   const ban = ipBanStatus();
   if (ban.banned) {
@@ -223,7 +259,7 @@ export async function binanceRequest<T>(
       }
 
       // Transient server-side errors are worth one retry.
-      if (response.status >= 500 && attempt < MAX_RETRIES) {
+      if (response.status >= 500 && !noServerRetry && attempt < MAX_RETRIES) {
         const waitMs = 2 ** attempt * 500;
         safeLog.warn(`[binance] ${response.status} on ${path}; retrying in ${waitMs}ms`);
         beginBackoff(waitMs, `Binance returned ${response.status} — retrying.`);

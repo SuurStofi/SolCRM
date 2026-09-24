@@ -30,6 +30,8 @@ yarn-error.log*
 # database (may contain trade history + Binance data)
 /prisma/*.db
 /prisma/*.db-journal
+# local safety copies made before migrations -- same data as dev.db
+/prisma/*.db.backup-*
 *.sqlite
 *.sqlite3
 

@@ -136,7 +136,7 @@ export function P2PAdsPanel() {
               className="mt-[18px] inline-flex h-[34px] shrink-0 items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {loading && <Spinner className="border-t-accent-fg" />}
-              Search
+              <span>Search</span>
             </button>
           </div>
         </div>

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { handleRoute } from '@/lib/binance/route-helpers';
 import { SafeError } from '@/lib/binance/redact';
 import { createOrder, listOrders, updateOrder, isP2PStatus } from '@/lib/p2p/store';
+import { userRoute } from '@/lib/auth/route';
+import { isUniqueViolation } from '@/lib/account/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,8 +11,8 @@ const TICKER = /^[A-Z0-9]{2,10}$/;
 const DECIMAL = /^\d+(\.\d+)?$/;
 const MAX_TEXT = 500;
 
-export async function GET() {
-  return handleRoute('GET /api/p2p/orders', () => listOrders());
+export async function GET(request: Request) {
+  return userRoute(request, 'GET /api/p2p/orders', (user) => listOrders(user.id));
 }
 
 /**
@@ -61,9 +62,9 @@ export async function POST(request: Request) {
     }
   }
 
-  return handleRoute('POST /api/p2p/orders', async () => {
+  return userRoute(request, 'POST /api/p2p/orders', async (user) => {
     try {
-      return await createOrder({
+      return await createOrder(user.id, {
         orderNumber,
         fiat,
         asset,
@@ -104,8 +105,8 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: false, error: 'Nothing to update.' }, { status: 400 });
   }
 
-  return handleRoute('PATCH /api/p2p/orders', () =>
-    updateOrder(id, { status: status ?? undefined, notes }),
+  return userRoute(request, 'PATCH /api/p2p/orders', (user) =>
+    updateOrder(user.id, id, { status: status ?? undefined, notes }),
   );
 }
 
@@ -114,12 +115,4 @@ function text(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim().slice(0, MAX_TEXT);
   return trimmed === '' ? null : trimmed;
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    (error as { code?: unknown }).code === 'P2002'
-  );
 }

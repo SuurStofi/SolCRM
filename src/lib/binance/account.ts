@@ -108,6 +108,19 @@ export async function getAccountSnapshot(): Promise<AccountSnapshot> {
   };
 }
 
+/**
+ * Free (spendable) spot balance per asset, as decimal strings. Weight 20.
+ * Assets with no balance are simply absent -- treat a miss as "0".
+ */
+export async function getFreeBalances(): Promise<Record<string, string>> {
+  await ensureTimeSynced();
+  const account = await binanceRequest<AccountInfo>('/api/v3/account', {
+    signed: true,
+    params: { omitZeroBalances: 'true' },
+  });
+  return Object.fromEntries((account.balances ?? []).map((b) => [b.asset, b.free]));
+}
+
 export interface DepositAddress {
   address: string;
   /** Some networks require a memo/tag; sending without it can lose funds. */

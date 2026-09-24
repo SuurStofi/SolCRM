@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { findRedeemablePosition, redeemFlexibleToSpot } from '@/lib/binance/earn';
-import { handleRoute } from '@/lib/binance/route-helpers';
+import { userRoute } from '@/lib/auth/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,9 +29,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'Invalid amount.' }, { status: 400 });
   }
 
-  return handleRoute('POST /api/binance/earn/redeem', async () => {
-    const position = await findRedeemablePosition(asset);
-    const result = await redeemFlexibleToSpot({ productId: position.productId, amount });
-    return { result, asset, redeemed: amount ?? position.totalAmount };
-  });
+  return userRoute(
+    request,
+    'POST /api/binance/earn/redeem',
+    async () => {
+      const position = await findRedeemablePosition(asset);
+      const result = await redeemFlexibleToSpot({ productId: position.productId, amount });
+      return { result, asset, redeemed: amount ?? position.totalAmount };
+    },
+    { binance: true },
+  );
 }
