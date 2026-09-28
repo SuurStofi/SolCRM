@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { searchAds, p2pBoardUrl, type TradeSide } from '@/lib/binance/p2p';
+import { searchAds, p2pBoardUrl, adLink, type TradeSide } from '@/lib/binance/p2p';
 import { userRoute } from '@/lib/auth/route';
 
 export const dynamic = 'force-dynamic';
@@ -48,7 +48,10 @@ export async function GET(request: Request) {
   const side = tradeType as TradeSide;
 
   return userRoute(request, 'GET /api/p2p/ads', async () => ({
-    ads: await searchAds({ asset, fiat, tradeType: side, payMethod, transAmount }),
+    ads: (await searchAds({ asset, fiat, tradeType: side, payMethod, transAmount })).map((ad) => ({
+      ...ad,
+      link: adLink(ad),
+    })),
     boardUrl: p2pBoardUrl(asset, fiat, side),
   }));
 }

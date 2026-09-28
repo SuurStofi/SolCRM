@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { binanceRequest, P2P_PUBLIC_BASE } from './client';
-import { SafeError } from './redact';
+import { SafeError, safeLog, redact } from './redact';
 
 /**
  * Public P2P ad search -- unauthenticated, and on www.binance.com rather than
@@ -22,6 +22,11 @@ import { SafeError } from './redact';
  *     returns nothing at all, for any asset or direction
  *   - prices and amounts arrive as JSON numbers, not the decimal strings this
  *     app uses everywhere money is arithmetic. They are display-only here
+ *   - (2026-09-28) minTransAmount / maxTransAmount are in the ASSET, not the
+ *     fiat: a SOL/EUR ad's 9.5396 at 104.826 EUR is exactly a 1,000 EUR
+ *     minimum. Multiply by `price` for fiat
+ *   - (2026-09-28) `transAmount` is ignored: 2, 500, 2000 and 100000 all
+ *     returned the same ten ads as no amount at all
  *
  * Results arrive already ranked best-first from the searcher's point of view
  * (highest price when selling, lowest when buying), so the order is preserved
@@ -42,6 +47,11 @@ export interface P2PAdvertiser {
   monthFinishRate: number;
   /** 0..1 positive feedback rate. */
   positiveRate: number;
+  /**
+   * Binance's id for the advertiser ("userNo"), which keys their profile page.
+   * Null when it could not be looked up -- see advertiserNumbers().
+   */
+  advertiserNo: string | null;
 }
 
 export interface P2PAd {
@@ -87,6 +97,21 @@ interface AdListResponse {
 }
 
 export async function searchAds(options: {
+  asset: string;
+  fiat: string;
+  tradeType: TradeSide;
+  payMethod?: string;
+  transAmount?: string;
+}): Promise<P2PAd[]> {
+  const [ads, numbers] = await Promise.all([listAds(options), advertiserNumbers(options)]);
+  return ads.map((ad) =>
+    ad.advertiser
+      ? { ...ad, advertiser: { ...ad.advertiser, advertiserNo: numbers.get(ad.adNo) ?? null } }
+      : ad,
+  );
+}
+
+async function listAds(options: {
   asset: string;
   fiat: string;
   tradeType: TradeSide;
@@ -141,6 +166,7 @@ function mapAd(ad: RawAd & { adNo: string }): P2PAd {
           monthOrderCount: ad.advertiser.monthOrderCount ?? 0,
           monthFinishRate: ad.advertiser.monthFinishRate ?? 0,
           positiveRate: ad.advertiser.positiveRate ?? 0,
+          advertiserNo: null,
         }
       : null,
   };
@@ -160,4 +186,75 @@ export function p2pBoardUrl(asset: string, fiat: string, tradeType: TradeSide): 
   return `https://p2p.binance.com/en/trade/${side}/${encodeURIComponent(
     asset,
   )}?fiat=${encodeURIComponent(fiat)}`;
+}
+
+/** Host of Binance's own P2P site, whose search the site itself uses. */
+const P2P_WEB_BASE = 'https://p2p.binance.com';
+
+interface WebSearchResponse {
+  success?: boolean;
+  data?: Array<{ adv?: { advNo?: string }; advertiser?: { userNo?: string } }>;
+}
+
+/**
+ * adNo -> advertiser number, for linking each ad to its merchant's page.
+ *
+ * The documented ad list above never returns the advertiser's number, so it
+ * is looked up in the search p2p.binance.com itself runs
+ * (POST /bapi/c2c/v2/friendly/c2c/adv/search). That endpoint is NOT
+ * documented. Measured on 2026-09-28: it answers `data[].adv.advNo` and
+ * `data[].advertiser.userNo`, filters by `payTypes`, and for USDT/UAH,
+ * SOL/UAH, SOL/EUR and USDC/EUR its first 20 rows contained every one of the
+ * ad list's (up to 10) ads.
+ *
+ * Best effort by design: any failure yields an empty map, and the ads then
+ * link to themselves instead of to the merchant.
+ */
+async function advertiserNumbers(options: {
+  asset: string;
+  fiat: string;
+  tradeType: TradeSide;
+  payMethod?: string;
+}): Promise<Map<string, string>> {
+  try {
+    const body = await binanceRequest<WebSearchResponse>('/bapi/c2c/v2/friendly/c2c/adv/search', {
+      base: P2P_WEB_BASE,
+      method: 'POST',
+      json: {
+        asset: options.asset,
+        fiat: options.fiat,
+        tradeType: options.tradeType,
+        page: 1,
+        rows: 20,
+        payTypes: options.payMethod ? [options.payMethod] : [],
+      },
+    });
+    const numbers = new Map<string, string>();
+    for (const row of body.data ?? []) {
+      if (row.adv?.advNo && row.advertiser?.userNo) numbers.set(row.adv.advNo, row.advertiser.userNo);
+    }
+    return numbers;
+  } catch (error) {
+    safeLog.warn(`[p2p] advertiser lookup failed, linking ads instead: ${redact(error)}`);
+    return new Map();
+  }
+}
+
+/** The advertiser's profile on Binance P2P: their ads, stats and reviews. */
+export function advertiserUrl(advertiserNo: string): string {
+  return `${P2P_WEB_BASE}/en/advertiserDetail?advertiserNo=${encodeURIComponent(advertiserNo)}`;
+}
+
+/**
+ * One ad on Binance, where the order is placed. Format from Binance's P2P
+ * skill reference ("provide a direct link to the specific ad using the adNo").
+ */
+export function adUrl(adNo: string): string {
+  return `https://c2c.binance.com/en/adv?code=${encodeURIComponent(adNo)}`;
+}
+
+/** Merchant page when known, else the ad itself. */
+export function adLink(ad: P2PAd): string {
+  const no = ad.advertiser?.advertiserNo;
+  return no ? advertiserUrl(no) : adUrl(ad.adNo);
 }

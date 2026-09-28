@@ -82,6 +82,47 @@ SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
 
 `NEXT_PUBLIC_SOLANA_RPC_URL` also works and bypasses the proxy entirely — only use it for an endpoint that permits browser origins, and **never** put a key you care about behind a `NEXT_PUBLIC_` name, since those are embedded in the client bundle.
 
+### 6. BestChange (optional — Exchanger and Compare tabs)
+
+The dashboard has three tabs:
+
+| Tab | What it does |
+|---|---|
+| **P2P** | wallet → Binance: everything above (sell/buy SOL, P2P ads, order archive) and **Autotrade** |
+| **Exchanger** | exchangers on [BestChange](https://www.bestchange.com) that **buy or sell** SOL, USDT (Solana) or USDC (Solana) through e-money, bank accounts and cards, picked the way BestChange lists them — payment system, then currency (*Bank card* → USD, RUB, UAH …; *WebMoney* → WMZ, WME; PayPal, YooMoney, Volet, Alipay …). Each offer is set against Binance P2P |
+| **Compare** | exchanger offers and Binance P2P for one crypto, side and fiat, on one scale (fiat per 1 unit), sortable by price; filters for Binance merchants only, payment method, and whether an amount fits |
+
+BestChange serves rates to partners only. Get a free key at [bestchange.com/partner](https://www.bestchange.com/partner/) (Profile → *API to get exchange rates*) and add it to `.env.local`:
+
+```
+BESTCHANGE_API_KEY=your_32_character_key
+```
+
+Without it the Exchanger tab says how to connect and Compare shows Binance only. One key serves the whole server, so both tabs require sign-in, like P2P search.
+
+- **Rails** are BestChange's groups *Digital currencies*, *Bank accounts and cards* and *Online banking* — taken from the data, not a hand-kept list. *Money transfers* (WU, MoneyGram, Ria) and cash are left out: both are collected as cash.
+- **Payment systems** come from BestChange's `ps` number: rails sharing one are a system, and their common leading words are its name.
+- **Fiat of a rail** is read off the end of its code (`SBERRUB` → RUB). WebMoney's `WMZ` / `WME` are pegged to USD / EUR; anything else without an ISO suffix is left out of Compare.
+- **Measured on 2026-09-28 with a live key:** `rate`, `rankrate` and a presence's `best` are always units of the FROM currency per 1 unit of the TO currency. Buying (fiat → SOL) that is fiat per SOL already (Sberbank RUB → SOL: `10585`); selling it is the inverse (SOL → Sberbank RUB: `0.0000916`). `inmin` / `inmax` are in the FROM currency, `reserve` in the TO currency; `inmax` is often far above the reserve, which is the real cap. Rows arrive unsorted.
+- **Binance side:** P2P ads for the crypto itself (selling lists buyers, buying lists sellers), and for SOL also the route via USDT at the spot price. `publisherType` is ignored by the ad list, so *merchants only* filters on the ads' own `userType`. Neither route includes network fees or the Convert spread.
+- The exchange itself happens on the exchanger's site, and P2P orders on Binance. Nothing in these two tabs sends money.
+
+### 7. Autotrade (P2P tab)
+
+When armed, the server checks Binance P2P every 60 s for a **USDT buyer** in your fiat who pays at least your price and whose limits take the whole amount. On a match it:
+
+1. checks everything it can first — the account may publish ads (`getAvailableAdsCategory` includes `mass`), the chosen payment methods are still on it, the SOL is on Binance, the amount clears Convert's minimum — and if anything is missing, **switches off without converting** and says why;
+2. **switches itself off** (a compare-and-set, so the timer and *Check now* cannot both trade), then converts the SOL to USDT with Convert;
+3. publishes a fixed-price **SELL ad** for that USDT at the buyer's price.
+
+Why an ad: Binance has no API for ordering on someone else's ad, so selling to that buyer directly is impossible. Orders on your ad, and releasing the USDT, stay manual in Binance.
+
+- **Needs P2P merchant status.** Binance's ad endpoints (`/sapi/v1/c2c/agent/ads/*`) are merchant-only. The key also needs *Enable Spot & Margin Trading* for Convert.
+- **Not verified against a live key:** the C2C agent ad endpoints (`getAvailableAdsCategory`, `getPayMethodByUserId`, `ads/post`), taken from Binance's [P2P skill reference](https://github.com/binance/binance-skills-hub/blob/main/skills/binance/p2p/references/agent-sapi-api.md). Try it with a small amount first.
+- Each leg is recorded before it is sent. A convert with no answer stays put for *Check order*; an ad with no answer stays put until you check Binance (*Ad is not on Binance* allows a retry). A refused ad keeps the USDT on Binance and offers *Retry ad*.
+- **Preview** (while off) shows what a check would find, trading nothing, and works before a key is linked.
+- The checks run in the server process: they stop when the server stops. `src/instrumentation.ts` starts them at boot.
+
 ---
 
 ## Security model
@@ -118,7 +159,9 @@ Phase 3 is therefore scoped to **discovery + local record-keeping**, not full li
   - `tradeMethodIdentifiers` does filter server-side, and must be a single plain string (`"PrivatBank"`), not a JSON array. An unknown identifier returns zero ads.
   - An unsupported market returns **success with zero items**, not an error, so a typo in `fiat` looks exactly like a thin market. RUB currently returns nothing at all, for any asset or direction.
   - Prices and amounts arrive as JSON **numbers**, not the decimal strings used everywhere money is arithmetic in this app. They are display-only.
-- No adNo deep link exists. `/en/adDetail?adNo=…` answers 404, and the advertiser page keys off an `advertiserNo` the ad list never returns, so the UI links to the filtered board (`/en/trade/{side}/{asset}?fiat=…`, verified 200) and shows the ad number to match by hand.
+  - *(2026-09-28)* `minTransAmount` / `maxTransAmount` are in the **asset** (SOL, USDT), not the fiat: a SOL/EUR ad's `9.5396` at `104.826` EUR is exactly a 1,000 EUR minimum. The ad list used to label them as fiat; fixed.
+  - *(2026-09-28)* `transAmount` is **ignored** — 2, 500, 2000 and 100000 all return the same ten ads as no amount. The Amount field in *P2P ads* therefore does not narrow anything; Compare checks amounts against the limits itself.
+- **Merchant links.** The ad list never returns the advertiser's number, so it is looked up in the search p2p.binance.com itself runs (`POST /bapi/c2c/v2/friendly/c2c/adv/search`, **undocumented**), which answers `advertiser.userNo` per `adv.advNo`; on 2026-09-28 its first 20 rows held all of the ad list's ads for every market tried. Each ad then links to `p2p.binance.com/en/advertiserDetail?advertiserNo=…`. The lookup is best effort: if it fails, ads link to themselves (`c2c.binance.com/en/adv?code={adNo}`, from Binance's P2P skill reference). `/en/adDetail?adNo=…` answers 404.
 - `POST /sapi/v1/c2c/agent/orderMatch/getUserOrderDetail` — order status. Listed under standard-key endpoints, but **still unverified against a live key, and therefore still not built.** Status in the archive is manual until someone confirms this endpoint answers for a non-merchant key; `statusFromBinance` on `P2POrder` exists to mark the difference once it does.
 
 **Simple Earn Flexible** — verified against a live key on 2026-09-21:
@@ -164,13 +207,22 @@ src/
 │     │  ├─ check-credit/         chain confirmation + Binance credit
 │     │  ├─ convert/              quote, then accept (irreversible)
 │     │  └─ list/                 recent runs
+│     ├─ exchange/
+│     │  ├─ rails/                e-money / bank / card rails per crypto and side
+│     │  └─ offers/               exchanger offers + Binance reference
+│     ├─ compare/                 exchangers vs Binance P2P, one scale
+│     ├─ autotrade/               settings, runs, check now, run actions
 │     ├─ p2p/
 │     │  ├─ ads/                  public ad search
 │     │  └─ orders/               local order archive (GET/POST/PATCH)
 │     └─ solana/rpc/              RPC proxy (see above)
 ├─ components/
 │  ├─ AuthProvider.tsx            session state, sign-in / link via signMessage
-│  ├─ Dashboard.tsx               sign-in screen or the panels
+│  ├─ Dashboard.tsx               sign-in screen or the three tabs
+│  ├─ ExchangePanel.tsx           Exchanger tab (BestChange)
+│  ├─ ComparePanel.tsx            Compare tab
+│  ├─ market-ui.tsx               shared bits of those two tabs
+│  ├─ AutoTradePanel.tsx          autotrade settings and runs
 │  ├─ AccountPanel.tsx            linked wallets, Binance key
 │  ├─ WalletProvider.tsx          wallet adapter, client-side only
 │  ├─ WalletPanel.tsx             SOL balance, SPL tokens, tx history
@@ -196,8 +248,19 @@ src/
    │  ├─ convert.ts               quote / accept / order status
    │  ├─ earn.ts                  Flexible positions + redemption
    │  ├─ p2p.ts                   public ad search (see limits above)
+   │  ├─ market.ts                public spot price
+   │  ├─ c2c.ts                   P2P ad publishing (merchant, unverified)
    │  ├─ redact.ts                secret scrubbing
    │  └─ route-helpers.ts         uniform scrubbed error responses
+   ├─ bestchange/
+   │  ├─ client.ts                API v2 client, mirrors, caching
+   │  └─ market.ts                rails, payment systems, offers (buy and sell)
+   ├─ autotrade/
+   │  ├─ machine.ts               run state machine
+   │  ├─ store.ts                 persistence, compare-and-set, claim
+   │  ├─ engine.ts                trigger, preflight, convert, publish
+   │  └─ scheduler.ts             60 s background timer
+   ├─ compare.ts                  crypto <-> fiat across exchangers and Binance
    ├─ solana/
    │  ├─ read.ts                  balance, SPL tokens, tx history
    │  └─ transfer.ts              fees, max sendable, send + confirm

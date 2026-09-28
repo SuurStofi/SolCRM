@@ -18,6 +18,7 @@ interface Advertiser {
   monthOrderCount: number;
   monthFinishRate: number;
   positiveRate: number;
+  advertiserNo: string | null;
 }
 
 interface Ad {
@@ -32,6 +33,8 @@ interface Ad {
   payTimeLimit: number;
   tradeMethods: string[];
   advertiser: Advertiser | null;
+  /** Merchant page when known, else the ad itself. */
+  link: string;
 }
 
 interface SearchResult {
@@ -219,7 +222,7 @@ function AdCard({ ad }: { ad: Ad }) {
             {ad.price} {ad.fiat}
           </span>
           <p className="tabular mt-0.5 text-[11px] text-faint">
-            {ad.minTransAmount}–{ad.maxTransAmount} {ad.fiat} · {ad.tradableAmount}{' '}
+            {ad.minTransAmount}–{ad.maxTransAmount} {ad.asset} per order · {ad.tradableAmount}{' '}
             {ad.asset} available · {ad.payTimeLimit} min to pay
           </p>
         </div>
@@ -228,12 +231,22 @@ function AdCard({ ad }: { ad: Ad }) {
             {ad.adNo.slice(0, 6)}…
           </span>
           <CopyButton value={ad.adNo} />
+          <a
+            href={ad.link}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-1.5 inline-flex h-[26px] items-center rounded-md bg-accent px-2 text-[11px] font-medium text-accent-fg transition hover:brightness-110"
+          >
+            {ad.link.includes('advertiserDetail') ? 'Merchant' : 'Open ad'}
+          </a>
         </span>
       </div>
 
       {advertiser && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <span className="text-xs font-medium">{advertiser.nickName}</span>
+          <ExtLink href={ad.link}>
+            <span className="text-xs font-medium">{advertiser.nickName}</span>
+          </ExtLink>
           {advertiser.userType === 'merchant' && <Chip tone="accent">merchant</Chip>}
           {/* Completion rate is the number that predicts a wasted hour, so it
               is shown rather than buried behind the order count. */}

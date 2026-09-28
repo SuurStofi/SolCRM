@@ -152,6 +152,9 @@ model User {
   flows    TransferFlow[]
   buys     BuyFlow[]
   orders   P2POrder[]
+
+  autoTrade     AutoTradeConfig?
+  autoTradeRuns AutoTradeRun[]
 }
 
 /// A Solana wallet whose owner proved control by signing a challenge. Any
@@ -266,4 +269,79 @@ model BuyEvent {
   createdAt DateTime @default(now())
 
   @@index([flowId, createdAt])
+}
+
+/// Autotrade settings, one row per account. When enabled, the server watches
+/// Binance P2P for a USDT buyer at or above minPrice; on a match it converts
+/// amountSol SOL to USDT and publishes a SELL ad at that buyer's price. It
+/// switches itself off as soon as it starts a run, so it never trades twice
+/// without being re-armed.
+model AutoTradeConfig {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  enabled Boolean @default(false)
+  fiat    String  @default("UAH")
+  /// Lowest buyer price that triggers, fiat per USDT (decimal string).
+  minPrice  String
+  /// SOL converted per run (decimal string).
+  amountSol String
+  /// Binance trade-method identifier the buyer must accept (e.g. "Monobank").
+  buyerMethod String?
+  /// JSON array of the user's own Binance payIds, used on the published ad.
+  payIds       String @default("[]")
+  /// Per-order limits of the published ad, fiat (decimal strings).
+  minOrderFiat String
+  payTimeLimit Int    @default(15)
+
+  /// Outcome of the latest check, scrubbed -- safe to render.
+  lastCheck   String?
+  lastCheckAt DateTime?
+  updatedAt   DateTime  @updatedAt
+}
+
+model AutoTradeRun {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  state String @default("CONVERT_QUOTED")
+  fiat  String
+
+  // --- what triggered it ---
+  amountSol       String
+  triggerAdNo     String
+  /// The buyer's price, fiat per USDT; the published ad uses it.
+  triggerPrice    String
+  triggerAdvertiser String?
+
+  // --- convert leg ---
+  convertQuoteId String?
+  convertOrderId String?
+  usdtReceived   String?
+
+  // --- ad leg ---
+  advNo String?
+
+  /// Scrubbed error text -- safe to render.
+  lastError String?
+
+  events    AutoTradeEvent[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model AutoTradeEvent {
+  id    String       @id @default(cuid())
+  runId String
+  run   AutoTradeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  fromState String?
+  toState   String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([runId, createdAt])
 }

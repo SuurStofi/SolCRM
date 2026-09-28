@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { shortenAddress } from '@/lib/solana/read';
@@ -12,6 +12,9 @@ import { TransferPanel } from './TransferPanel';
 import { BuyPanel } from './BuyPanel';
 import { P2PAdsPanel } from './P2PAdsPanel';
 import { P2POrdersPanel } from './P2POrdersPanel';
+import { AutoTradePanel } from './AutoTradePanel';
+import { ExchangePanel } from './ExchangePanel';
+import { ComparePanel } from './ComparePanel';
 import { RateLimitBanner } from './RateLimitBanner';
 import { ErrorNote, Spinner } from './ui';
 
@@ -35,7 +38,108 @@ export function Dashboard() {
   return (
     <>
       <RateLimitBanner />
+      <Tabs />
+    </>
+  );
+}
 
+const TABS = [
+  { id: 'p2p', label: 'P2P', hint: 'Wallet → Binance' },
+  { id: 'exchange', label: 'Exchanger', hint: 'Buy & sell · BestChange' },
+  { id: 'compare', label: 'Compare', hint: 'Sort by price' },
+] as const;
+
+type TabId = (typeof TABS)[number]['id'];
+
+function tabFromHash(): TabId | null {
+  const hash = window.location.hash.slice(1);
+  return TABS.find((tab) => tab.id === hash)?.id ?? null;
+}
+
+/**
+ * The three workspaces. The tab lives in the URL hash so a reload stays put.
+ *
+ * A tab mounts on first visit and then stays mounted, only hidden: the P2P
+ * tab holds in-progress transfer and buy UI, and unmounting it on a tab
+ * switch would drop that state.
+ */
+function Tabs() {
+  const [active, setActive] = useState<TabId>('p2p');
+  const [visited, setVisited] = useState<Set<TabId>>(() => new Set<TabId>(['p2p']));
+
+  const open = useCallback((id: TabId) => {
+    setActive(id);
+    setVisited((seen) => (seen.has(id) ? seen : new Set(seen).add(id)));
+  }, []);
+
+  useEffect(() => {
+    // Read after mount: the server render has no hash, so reading it during
+    // render would mismatch on hydration.
+    const sync = () => {
+      const id = tabFromHash();
+      if (id) open(id);
+    };
+    void Promise.resolve().then(sync);
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, [open]);
+
+  function select(id: TabId) {
+    history.replaceState(null, '', `#${id}`);
+    open(id);
+  }
+
+  return (
+    <>
+      <nav
+        role="tablist"
+        aria-label="Workspaces"
+        className="mb-5 flex gap-1 rounded-xl border border-border bg-surface p-1 shadow-[var(--shadow-card)]"
+      >
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={active === tab.id}
+            onClick={() => select(tab.id)}
+            className={`flex flex-1 flex-col items-center rounded-lg px-3 py-2 transition sm:flex-row sm:justify-center sm:gap-2 ${
+              active === tab.id
+                ? 'bg-accent text-accent-fg'
+                : 'text-muted hover:bg-surface-subtle hover:text-foreground'
+            }`}
+          >
+            <span className="text-sm font-semibold">{tab.label}</span>
+            <span
+              className={`text-[11px] ${active === tab.id ? 'text-accent-fg/80' : 'text-faint'}`}
+            >
+              {tab.hint}
+            </span>
+          </button>
+        ))}
+      </nav>
+
+      <div role="tabpanel" hidden={active !== 'p2p'}>
+        <P2PTab />
+      </div>
+      {visited.has('exchange') && (
+        <div role="tabpanel" hidden={active !== 'exchange'}>
+          <ExchangePanel />
+        </div>
+      )}
+      {visited.has('compare') && (
+        <div role="tabpanel" hidden={active !== 'compare'}>
+          <ComparePanel />
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Wallet → Binance: everything that existed before the tabs. */
+function P2PTab() {
+  return (
+    <>
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <AccountPanel />
         <WalletPanel />
@@ -53,6 +157,10 @@ export function Dashboard() {
       <div className="mt-5 grid items-start gap-5 lg:grid-cols-2">
         <P2PAdsPanel />
         <P2POrdersPanel />
+      </div>
+
+      <div className="mt-5">
+        <AutoTradePanel />
       </div>
     </>
   );

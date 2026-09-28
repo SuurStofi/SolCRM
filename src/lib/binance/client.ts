@@ -138,6 +138,14 @@ interface RequestOptions {
    * the caller has to find out what happened before trying again.
    */
   noServerRetry?: boolean;
+  /**
+   * JSON request body. The C2C agent endpoints (P2P ad management) take one;
+   * the signature still covers only the query string (timestamp etc.), per
+   * Binance's P2P skill reference.
+   */
+  json?: unknown;
+  /** Extra headers, e.g. the User-Agent the C2C agent endpoints expect. */
+  headers?: Record<string, string>;
 }
 
 export async function binanceRequest<T>(
@@ -150,6 +158,8 @@ export async function binanceRequest<T>(
     params = {},
     base = SPOT_BASE,
     noServerRetry = false,
+    json,
+    headers: extraHeaders = {},
   } = options;
 
   const ban = ipBanStatus();
@@ -163,7 +173,8 @@ export async function binanceRequest<T>(
   let attempt = 0;
   // Retry loop handles 429 (rate limited) and transient 5xx only.
   for (;;) {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...extraHeaders };
+    if (json !== undefined) headers['Content-Type'] = 'application/json';
     let payload: string;
 
     if (signed) {
@@ -182,7 +193,12 @@ export async function binanceRequest<T>(
 
     let response: Response;
     try {
-      response = await fetch(url, { method, headers, cache: 'no-store' });
+      response = await fetch(url, {
+        method,
+        headers,
+        cache: 'no-store',
+        body: json !== undefined ? JSON.stringify(json) : undefined,
+      });
     } catch (cause) {
       // A connection that was never established is safe to retry even for a
       // POST: nothing reached Binance, so nothing can execute twice.
