@@ -160,25 +160,25 @@ export function AutoTradePanel() {
 
   return (
     <Panel
-      title="Autotrade"
-      subtitle="Sell SOL via USDT when a Binance buyer pays your price"
+      title="Auto-sell"
+      subtitle="Sells your SOL when a Binance buyer offers your price"
       icon={<BoltMark />}
       action={
         <div className="flex items-center gap-2">
           {config && (
-            <Chip tone={config.enabled ? 'good' : 'neutral'}>{config.enabled ? 'armed' : 'off'}</Chip>
+            <Chip tone={config.enabled ? 'good' : 'neutral'}>{config.enabled ? 'on · watching' : 'off'}</Chip>
           )}
           <RefreshButton onClick={() => void load()} loading={false} />
         </div>
       }
     >
       <div className="space-y-5">
-        {error && <ErrorNote title="Autotrade">{error}</ErrorNote>}
+        {error && <ErrorNote title="Auto-sell">{error}</ErrorNote>}
 
         {config?.lastCheck && (
           <div className="rounded-lg border border-border bg-surface-subtle px-3.5 py-2.5 text-xs">
             <span className="text-faint">
-              Last check{config.lastCheckAt && ` · ${new Date(config.lastCheckAt).toLocaleTimeString()}`}:{' '}
+              Last price check{config.lastCheckAt && ` · ${new Date(config.lastCheckAt).toLocaleTimeString()}`}:{' '}
             </span>
             {config.lastCheck}
           </div>
@@ -188,9 +188,9 @@ export function AutoTradePanel() {
         )}
 
         <div>
-          <SectionLabel>Trigger</SectionLabel>
+          <SectionLabel>Step 1 · When to sell</SectionLabel>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Field label="Fiat">
+            <Field label="Your currency">
               <input
                 value={form.fiat}
                 onChange={(e) => set('fiat', e.target.value.toUpperCase())}
@@ -198,7 +198,7 @@ export function AutoTradePanel() {
                 className={inputClass}
               />
             </Field>
-            <Field label={`Buyer pays ≥, ${form.fiat}/USDT`}>
+            <Field label={`Lowest price, ${form.fiat} for 1 USDT`}>
               <input
                 value={form.minPrice}
                 onChange={(e) => set('minPrice', e.target.value)}
@@ -207,7 +207,7 @@ export function AutoTradePanel() {
                 className={inputClass}
               />
             </Field>
-            <Field label="SOL per run">
+            <Field label="How much SOL to sell">
               <input
                 value={form.amountSol}
                 onChange={(e) => set('amountSol', e.target.value)}
@@ -216,7 +216,7 @@ export function AutoTradePanel() {
                 className={inputClass}
               />
             </Field>
-            <Field label="Buyer accepts (optional)">
+            <Field label="Buyer's bank (optional)">
               <input
                 value={form.buyerMethod}
                 onChange={(e) => set('buyerMethod', e.target.value)}
@@ -236,14 +236,14 @@ export function AutoTradePanel() {
                 disabled={busy === 'methods'}
                 className="text-[11px] font-medium text-muted hover:text-foreground"
               >
-                {busy === 'methods' ? 'Loading…' : methods ? 'Reload' : 'Load my payment methods'}
+                {busy === 'methods' ? 'Loading…' : methods ? 'Reload' : 'Load my banks from Binance'}
               </button>
             }
           >
-            Your ad
+            Step 2 · Your sale ad on Binance
           </SectionLabel>
           <div className="grid grid-cols-2 gap-2">
-            <Field label={`Min order, ${form.fiat}`}>
+            <Field label={`Smallest deal, ${form.fiat}`}>
               <input
                 value={form.minOrderFiat}
                 onChange={(e) => set('minOrderFiat', e.target.value)}
@@ -251,7 +251,7 @@ export function AutoTradePanel() {
                 className={inputClass}
               />
             </Field>
-            <Field label="Time to pay">
+            <Field label="Buyer must pay within">
               <select
                 value={form.payTimeLimit}
                 onChange={(e) => set('payTimeLimit', Number(e.target.value))}
@@ -268,7 +268,7 @@ export function AutoTradePanel() {
 
           {methodsError && (
             <p className="mt-2 text-[11px] leading-relaxed text-bad">
-              {methodsError} — publishing ads through the API needs P2P merchant status.
+              {methodsError} — posting ads from this app needs Binance P2P merchant status.
             </p>
           )}
           {methods && methods.length > 0 && (
@@ -293,14 +293,18 @@ export function AutoTradePanel() {
             </div>
           )}
           {methods && methods.length === 0 && !methodsError && (
-            <p className="mt-2 text-[11px] text-warn">No payment methods on your Binance P2P profile.</p>
+            <p className="mt-2 text-[11px] text-warn">
+              Your Binance P2P profile has no banks or payment apps yet. Add one on Binance first.
+            </p>
           )}
           {!methods && form.payIds.length > 0 && (
-            <p className="mt-2 text-[11px] text-faint">{form.payIds.length} payment method(s) chosen.</p>
+            <p className="mt-2 text-[11px] text-faint">
+              {form.payIds.length} way(s) to get paid chosen.
+            </p>
           )}
           <p className="mt-2 text-[11px] text-faint">
-            The ad sells all the USDT from the run at the buyer&apos;s price; the largest order is the
-            whole amount.
+            Tick where you want to receive the money. The ad offers all the USDT at the price that
+            was found; one buyer can take all of it.
           </p>
         </div>
 
@@ -312,7 +316,7 @@ export function AutoTradePanel() {
             className="inline-flex h-[34px] items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium transition hover:border-border-strong disabled:opacity-50"
           >
             {busy === 'save' && <Spinner />}
-            Save {config?.enabled ? '(disarms)' : ''}
+            Save settings{config?.enabled ? ' (turns it off)' : ''}
           </button>
           <button
             type="button"
@@ -321,7 +325,7 @@ export function AutoTradePanel() {
             className="inline-flex h-[34px] items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium transition hover:border-border-strong disabled:opacity-50"
           >
             {busy === 'check' && <Spinner />}
-            {config?.enabled ? 'Check now' : 'Preview'}
+            {config?.enabled ? 'Check prices now' : 'Try with current prices'}
           </button>
           {config?.enabled && (
             <button
@@ -330,7 +334,7 @@ export function AutoTradePanel() {
               disabled={busy !== null}
               className="inline-flex h-[34px] items-center rounded-lg border border-bad/40 px-3 text-sm font-medium text-bad transition hover:bg-bad-bg disabled:opacity-50"
             >
-              Switch off
+              Turn off
             </button>
           )}
         </div>
@@ -345,10 +349,11 @@ export function AutoTradePanel() {
                 className="mt-0.5"
               />
               <span>
-                When a buyer pays ≥ {config.minPrice} {config.fiat}/USDT for the amount, the server will
-                convert <b>{config.amountSol} SOL</b> to USDT on my Binance <b>without asking</b> and
-                publish a SELL ad at that buyer&apos;s price. It then switches itself off. Orders on the
-                ad, and releasing the USDT, stay manual in Binance.
+                I understand: when a buyer offers {config.minPrice} {config.fiat} or more for 1 USDT,
+                the app will exchange <b>{config.amountSol} SOL</b> to USDT on my Binance{' '}
+                <b>without asking me again</b> and post a sale ad at that price. Then it turns itself
+                off. Confirming the buyer&apos;s payment and releasing the USDT I still do myself in
+                the Binance app.
               </span>
             </label>
             <button
@@ -358,15 +363,15 @@ export function AutoTradePanel() {
               className="mt-2.5 inline-flex h-[32px] items-center gap-2 rounded-lg bg-accent px-3 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {busy === 'arm' && <Spinner className="border-t-accent-fg" />}
-              Arm autotrade
+              Turn on auto-sell
             </button>
           </div>
         )}
 
         <div>
-          <SectionLabel>Runs</SectionLabel>
+          <SectionLabel>History</SectionLabel>
           {!snapshot || snapshot.runs.length === 0 ? (
-            <EmptyRow>No runs yet.</EmptyRow>
+            <EmptyRow>Nothing has been sold automatically yet.</EmptyRow>
           ) : (
             <ul className="space-y-2">
               {snapshot.runs.map((run) => (
@@ -377,10 +382,11 @@ export function AutoTradePanel() {
         </div>
 
         <p className="border-t border-border pt-3 text-[11px] leading-relaxed text-faint">
-          Checks run on the server every {Math.round((snapshot?.intervalMs ?? 60000) / 1000)}s while it
-          is running. Binance has no API for ordering on someone else&apos;s ad, so the trade
-          happens through your own ad at the price found. Publishing ads through the API needs P2P
-          merchant status; without it autotrade stops before converting anything.
+          While it is on, prices are checked every{' '}
+          {Math.round((snapshot?.intervalMs ?? 60000) / 1000)} seconds, even with this page closed.
+          Binance does not let apps answer someone else&apos;s offer, so the sale goes through your
+          own ad at the price found. Posting ads from an app needs Binance P2P merchant status;
+          without it, auto-sell stops before exchanging anything.
         </p>
       </div>
     </Panel>
@@ -417,20 +423,20 @@ function RunCard({
         </span>
         {run.advNo && (
           <ExtLink href={`https://c2c.binance.com/en/adv?code=${encodeURIComponent(run.advNo)}`}>
-            <span className="font-mono text-[11px]">ad {run.advNo}</span>
+            <span className="text-[11px]">open my ad</span>
           </ExtLink>
         )}
       </div>
       <p className="tabular mt-1 text-xs text-muted">
         {run.amountSol} SOL
         {run.usdtReceived && ` → ${run.usdtReceived} USDT`} · buyer{' '}
-        {run.triggerAdvertiser ?? ''} at {run.triggerPrice} {run.fiat}/USDT
+        {run.triggerAdvertiser ?? ''} offered {run.triggerPrice} {run.fiat} for 1 USDT
       </p>
       {run.lastError && <p className="mt-1 text-[11px] leading-relaxed text-bad">{run.lastError}</p>}
       <div className="mt-1.5 flex flex-wrap gap-1.5">
-        {run.state === 'CONVERT_QUOTED' && run.convertOrderId && button('settle', 'Check order')}
-        {run.state === 'AD_FAILED' && button('retry-ad', 'Retry ad')}
-        {run.state === 'AD_REQUESTED' && run.lastError && button('ad-missing', 'Ad is not on Binance')}
+        {run.state === 'CONVERT_QUOTED' && run.convertOrderId && button('settle', 'Check status')}
+        {run.state === 'AD_FAILED' && button('retry-ad', 'Try posting the ad again')}
+        {run.state === 'AD_REQUESTED' && run.lastError && button('ad-missing', "I don't see the ad on Binance")}
       </div>
     </li>
   );

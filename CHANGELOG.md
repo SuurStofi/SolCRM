@@ -11,6 +11,8 @@
 - Binance client: JSON request bodies and extra headers (for the C2C agent endpoints).
 
 ### Changed
+- **P2P tab reorganised for non-experts.** Instead of eight panels on one page, it has sections — My balance, Sell SOL, Buy SOL, Trade with people, Auto-sell, My account — each with a short explanation and numbered "how it works" steps. A "Before you start" checklist (connect wallet, connect Binance) shows until both are done. The section is kept in the URL hash (`#p2p/sell`).
+- Plain-language wording across the P2P tab: statuses ("On Binance · ready to exchange" instead of "Credited on Binance"), buttons ("See price", "Confirm and exchange", "Turn on auto-sell"), prices shown as "1 USDT = 41.5 UAH", P2P offers marked "best price" and "reliable" / "check reviews". The P2P order archive is now "My deals", with optional fields folded away.
 - Binance P2P ads (P2P ads panel, Compare) link to the advertiser's merchant page instead of the filtered P2P board, or to the ad itself when the advertiser cannot be looked up.
 
 ### Fixed

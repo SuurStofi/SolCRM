@@ -11,6 +11,7 @@ import {
   ExtLink,
   CopyButton,
 } from './ui';
+import { Segmented } from './market-ui';
 
 interface Advertiser {
   nickName: string;
@@ -77,71 +78,82 @@ export function P2PAdsPanel() {
 
   return (
     <Panel
-      title="P2P ads"
-      subtitle="Discovery only · orders are created on Binance"
+      title="Find an offer"
+      subtitle="Real people on Binance P2P · best price first"
       icon={<PeopleMark />}
     >
       <div className="space-y-5">
-        {error && <ErrorNote title="Could not search ads">{error}</ErrorNote>}
+        {error && <ErrorNote title="Could not search">{error}</ErrorNote>}
 
-        <div>
-          <SectionLabel>Find ads</SectionLabel>
+        <div className="space-y-3">
+          <Field label="I want to">
+            <Segmented
+              value={tradeType}
+              onChange={setTradeType}
+              options={[
+                { id: 'SELL', label: `Sell ${asset || 'crypto'}` },
+                { id: 'BUY', label: `Buy ${asset || 'crypto'}` },
+              ]}
+            />
+          </Field>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Field label="Asset">
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Crypto">
               <input
                 value={asset}
                 onChange={(event) => setAsset(event.target.value.toUpperCase())}
+                list="p2p-assets"
+                placeholder="USDT"
                 className={inputClass}
               />
+              <datalist id="p2p-assets">
+                {['USDT', 'SOL', 'BTC', 'ETH', 'USDC'].map((code) => (
+                  <option key={code} value={code} />
+                ))}
+              </datalist>
             </Field>
-            <Field label="Fiat">
+            <Field label="Paid in (your money)">
               <input
                 value={fiat}
                 onChange={(event) => setFiat(event.target.value.toUpperCase())}
+                list="p2p-fiats"
+                placeholder="UAH"
                 className={inputClass}
               />
+              <datalist id="p2p-fiats">
+                {['UAH', 'USD', 'EUR', 'KZT', 'PLN', 'GEL', 'TRY'].map((code) => (
+                  <option key={code} value={code} />
+                ))}
+              </datalist>
             </Field>
-            <Field label="I want to">
-              <select
-                value={tradeType}
-                onChange={(event) => setTradeType(event.target.value as 'BUY' | 'SELL')}
-                className={inputClass}
-              >
-                <option value="SELL">Sell</option>
-                <option value="BUY">Buy</option>
-              </select>
-            </Field>
-            <Field label="Amount">
+            <Field label={`Amount, ${asset || 'crypto'} (optional)`}>
               <input
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
                 inputMode="decimal"
-                placeholder="any"
+                placeholder="any amount"
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Bank or payment app (optional)">
+              <input
+                value={payMethod}
+                onChange={(event) => setPayMethod(event.target.value)}
+                placeholder="e.g. Monobank"
                 className={inputClass}
               />
             </Field>
           </div>
 
-          <div className="mt-2 flex gap-2">
-            <Field label="Payment method" className="w-full">
-              <input
-                value={payMethod}
-                onChange={(event) => setPayMethod(event.target.value)}
-                placeholder="e.g. PrivatBank — exact identifier"
-                className={inputClass}
-              />
-            </Field>
-            <button
-              type="button"
-              onClick={search}
-              disabled={loading || !asset.trim() || !fiat.trim()}
-              className="mt-[18px] inline-flex h-[34px] shrink-0 items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
-            >
-              {loading && <Spinner className="border-t-accent-fg" />}
-              <span>Search</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={search}
+            disabled={loading || !asset.trim() || !fiat.trim()}
+            className="inline-flex h-[36px] w-full items-center justify-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
+          >
+            {loading && <Spinner className="border-t-accent-fg" />}
+            <span>Show offers</span>
+          </button>
         </div>
 
         {result && (
@@ -151,37 +163,35 @@ export function P2PAdsPanel() {
                 <ExtLink href={result.boardUrl}>Open on Binance</ExtLink>
               }
             >
-              {result.ads.length > 0 ? `Top ${result.ads.length} ads` : 'Results'}
+              {result.ads.length > 0 ? `${result.ads.length} offers` : 'Results'}
             </SectionLabel>
 
             {result.ads.length > 0 ? (
               <>
                 <ul className="space-y-2">
-                  {result.ads.map((ad) => (
-                    <AdCard key={ad.adNo} ad={ad} />
+                  {result.ads.map((ad, index) => (
+                    <AdCard key={ad.adNo} ad={ad} best={index === 0} />
                   ))}
                 </ul>
                 {/* Measured, not assumed: the endpoint ignores page and rows
                     alike, so this really is everything it will ever return. */}
                 <p className="mt-2 text-[11px] leading-relaxed text-faint">
-                  Binance caps this search at 10 ads and ignores paging, so there is no
-                  next page — narrow by amount or payment method to see different ones.
+                  Binance shows at most 10 offers. To see others, enter an amount or a bank.
                 </p>
               </>
             ) : (
               <EmptyRow>
-                No ads for {asset}/{fiat}. Binance answers an unsupported market the same
-                way it answers a thin one, so check the fiat code — RUB currently returns
-                nothing at all, whatever the asset or direction.
+                No offers for {asset} in {fiat}. Check the currency code (for example UAH, USD,
+                EUR). Some currencies, such as RUB, are not available at all.
               </EmptyRow>
             )}
           </div>
         )}
 
         <p className="border-t border-border pt-3 text-[11px] leading-relaxed text-faint">
-          Orders cannot be created through the API — that is a Binance limit, not a
-          missing feature. Match the ad number on Binance, trade there, then archive the
-          order number below.
+          The deal itself happens in the Binance app: Binance does not let other apps start
+          one for you. Press <b>Open on Binance</b> on an offer, trade there, then save the
+          deal in My deals if you want a record.
         </p>
       </div>
     </Panel>
@@ -210,36 +220,41 @@ function Field({
   );
 }
 
-function AdCard({ ad }: { ad: Ad }) {
+function AdCard({ ad, best }: { ad: Ad; best: boolean }) {
   const advertiser = ad.advertiser;
+  // Completion rate is the number that predicts a wasted hour, so it decides
+  // whether the advertiser reads as reliable.
+  const reliable =
+    advertiser !== null && advertiser.monthFinishRate >= 0.95 && advertiser.positiveRate >= 0.95;
 
   return (
-    <li className="rounded-lg border border-border bg-surface-subtle px-3.5 py-3">
+    <li
+      className={`rounded-lg border bg-surface-subtle px-3.5 py-3 ${
+        best ? 'border-good/40' : 'border-border'
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <span className="tabular text-sm font-semibold">
-            {ad.fiatSymbol || ''}
-            {ad.price} {ad.fiat}
-          </span>
-          <p className="tabular mt-0.5 text-[11px] text-faint">
-            {ad.minTransAmount}–{ad.maxTransAmount} {ad.asset} per order · {ad.tradableAmount}{' '}
-            {ad.asset} available · {ad.payTimeLimit} min to pay
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="tabular text-base font-semibold">
+              1 {ad.asset} = {ad.fiatSymbol || ''}
+              {ad.price} {ad.fiat}
+            </span>
+            {best && <Chip tone="good">best price</Chip>}
+          </div>
+          <p className="tabular mt-1 text-[11px] leading-relaxed text-muted">
+            One deal: {ad.minTransAmount}–{ad.maxTransAmount} {ad.asset} · available{' '}
+            {ad.tradableAmount} {ad.asset} · payment within {ad.payTimeLimit} min
           </p>
         </div>
-        <span className="flex shrink-0 items-center gap-0.5">
-          <span className="font-mono text-[10px] text-faint">
-            {ad.adNo.slice(0, 6)}…
-          </span>
-          <CopyButton value={ad.adNo} />
-          <a
-            href={ad.link}
-            target="_blank"
-            rel="noreferrer"
-            className="ml-1.5 inline-flex h-[26px] items-center rounded-md bg-accent px-2 text-[11px] font-medium text-accent-fg transition hover:brightness-110"
-          >
-            {ad.link.includes('advertiserDetail') ? 'Merchant' : 'Open ad'}
-          </a>
-        </span>
+        <a
+          href={ad.link}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex h-[30px] shrink-0 items-center rounded-md bg-accent px-2.5 text-xs font-medium text-accent-fg transition hover:brightness-110"
+        >
+          Open on Binance
+        </a>
       </div>
 
       {advertiser && (
@@ -247,24 +262,29 @@ function AdCard({ ad }: { ad: Ad }) {
           <ExtLink href={ad.link}>
             <span className="text-xs font-medium">{advertiser.nickName}</span>
           </ExtLink>
-          {advertiser.userType === 'merchant' && <Chip tone="accent">merchant</Chip>}
-          {/* Completion rate is the number that predicts a wasted hour, so it
-              is shown rather than buried behind the order count. */}
-          <Chip tone={advertiser.monthFinishRate >= 0.95 ? 'good' : 'warn'}>
-            {percent(advertiser.monthFinishRate)} completion
-          </Chip>
-          <Chip>{advertiser.monthOrderCount} orders/30d</Chip>
-          <Chip tone={advertiser.positiveRate >= 0.95 ? 'good' : 'warn'}>
-            {percent(advertiser.positiveRate)} positive
-          </Chip>
+          <Chip tone={reliable ? 'good' : 'warn'}>{reliable ? 'reliable' : 'check reviews'}</Chip>
+          {advertiser.userType === 'merchant' && <Chip tone="accent">verified merchant</Chip>}
+          <span className="text-[11px] text-faint">
+            {advertiser.monthOrderCount} deals this month · {percent(advertiser.monthFinishRate)}{' '}
+            finished · {percent(advertiser.positiveRate)} good reviews
+          </span>
         </div>
       )}
 
-      {ad.tradeMethods.length > 0 && (
-        <p className="mt-2 text-[11px] leading-relaxed text-muted">
-          {ad.tradeMethods.join(' · ')}
-        </p>
-      )}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        {ad.tradeMethods.length > 0 ? (
+          <p className="text-[11px] leading-relaxed text-muted">
+            <span className="text-faint">Payment: </span>
+            {ad.tradeMethods.join(' · ')}
+          </p>
+        ) : (
+          <span />
+        )}
+        <span className="flex items-center gap-0.5 text-[10px] text-faint">
+          ad no. <span className="font-mono">{ad.adNo.slice(0, 6)}…</span>
+          <CopyButton value={ad.adNo} />
+        </span>
+      </div>
     </li>
   );
 }

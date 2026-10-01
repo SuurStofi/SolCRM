@@ -14,6 +14,15 @@ import {
 const STATUSES = ['PENDING', 'PAID', 'COMPLETED', 'CANCELLED', 'DISPUTED'] as const;
 type Status = (typeof STATUSES)[number];
 
+/** What each status means in everyday words. */
+const STATUS_LABELS: Record<Status, string> = {
+  PENDING: 'waiting for payment',
+  PAID: 'paid, not released',
+  COMPLETED: 'completed',
+  CANCELLED: 'cancelled',
+  DISPUTED: 'in dispute',
+};
+
 const STATUS_TONES: Record<Status, 'neutral' | 'good' | 'warn' | 'bad' | 'accent'> = {
   PENDING: 'warn',
   PAID: 'accent',
@@ -67,6 +76,7 @@ export function P2POrdersPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [details, setDetails] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -100,9 +110,10 @@ export function P2POrdersPanel() {
       );
       await api('/api/p2p/orders', payload);
       setDraft(EMPTY_DRAFT);
+      setDetails(false);
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not archive the order.');
+      setError(cause instanceof Error ? cause.message : 'Could not save the deal.');
     } finally {
       setSaving(false);
     }
@@ -129,8 +140,8 @@ export function P2POrdersPanel() {
 
   return (
     <Panel
-      title="P2P orders"
-      subtitle="Your own record · not synced from Binance"
+      title="My deals"
+      subtitle="Your private notebook · Binance does not fill it in"
       icon={<LedgerMark />}
       action={<RefreshButton onClick={refresh} loading={loading} />}
     >
@@ -138,13 +149,30 @@ export function P2POrdersPanel() {
         {error && <ErrorNote title="Something went wrong">{error}</ErrorNote>}
 
         <div>
-          <SectionLabel>Archive an order</SectionLabel>
+          <SectionLabel>Save a deal</SectionLabel>
+          <p className="mb-2.5 text-[11px] leading-relaxed text-faint">
+            After a deal on Binance, copy its order number here to keep track of it. Only you
+            see this list.
+          </p>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <Field label="Order number" className="col-span-2 sm:col-span-1">
-              <input {...field('orderNumber')} placeholder="from Binance" className={inputClass} />
+            <Field label="Order number (from Binance)" className="col-span-2 sm:col-span-3">
+              <input
+                {...field('orderNumber')}
+                placeholder="e.g. 22612345678901234567"
+                className={inputClass}
+              />
             </Field>
-            <Field label="Fiat">
+            <Field label="Deal type">
+              <select {...field('tradeType')} className={inputClass}>
+                <option value="SELL">I sold</option>
+                <option value="BUY">I bought</option>
+              </select>
+            </Field>
+            <Field label="How much (crypto)">
+              <input {...field('amount')} inputMode="decimal" placeholder="optional" className={inputClass} />
+            </Field>
+            <Field label="Currency">
               <input
                 value={draft.fiat}
                 onChange={(event) =>
@@ -153,50 +181,56 @@ export function P2POrdersPanel() {
                 className={inputClass}
               />
             </Field>
-            <Field label="Side">
-              <select {...field('tradeType')} className={inputClass}>
-                <option value="SELL">Sell</option>
-                <option value="BUY">Buy</option>
-              </select>
-            </Field>
-            <Field label="Amount">
-              <input {...field('amount')} inputMode="decimal" className={inputClass} />
-            </Field>
-            <Field label="Price">
-              <input {...field('price')} inputMode="decimal" className={inputClass} />
-            </Field>
-            <Field label="Counterparty">
-              <input {...field('counterpartyName')} className={inputClass} />
-            </Field>
-            <Field label="Ad number" className="col-span-2 sm:col-span-3">
-              <input {...field('adNo')} placeholder="optional" className={inputClass} />
-            </Field>
-            <Field label="Notes" className="col-span-2 sm:col-span-3">
-              <textarea
-                {...field('notes')}
-                rows={2}
-                placeholder="Payment quirks, delays, anything worth remembering"
-                className={`${inputClass} h-auto py-2`}
-              />
-            </Field>
           </div>
 
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving || draft.orderNumber.trim() === '' || draft.fiat.trim() === ''}
-            className="mt-2 inline-flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
-          >
-            {saving && <Spinner className="border-t-accent-fg" />}
-            <span>Archive order</span>
-          </button>
+          {details ? (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Field label={`Price for 1 coin, ${draft.fiat || 'currency'}`}>
+                <input {...field('price')} inputMode="decimal" className={inputClass} />
+              </Field>
+              <Field label="Other person's name">
+                <input {...field('counterpartyName')} className={inputClass} />
+              </Field>
+              <Field label="Offer (ad) number" className="col-span-2">
+                <input {...field('adNo')} className={inputClass} />
+              </Field>
+              <Field label="Notes" className="col-span-2">
+                <textarea
+                  {...field('notes')}
+                  rows={2}
+                  placeholder="Late payment, wrong name on the card, anything worth remembering"
+                  className={`${inputClass} h-auto py-2`}
+                />
+              </Field>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setDetails(true)}
+              className="mt-2 text-[11px] font-medium text-muted underline-offset-2 transition hover:text-foreground hover:underline"
+            >
+              + Add price, name or notes
+            </button>
+          )}
+
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving || draft.orderNumber.trim() === '' || draft.fiat.trim() === ''}
+              className="inline-flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
+            >
+              {saving && <Spinner className="border-t-accent-fg" />}
+              <span>Save deal</span>
+            </button>
+          </div>
         </div>
 
         <div>
-          <SectionLabel>Archived</SectionLabel>
+          <SectionLabel>Saved deals</SectionLabel>
           {orders.length === 0 ? (
             <EmptyRow>
-              {loading ? 'Loading…' : 'No orders archived yet.'}
+              {loading ? 'Loading…' : 'Nothing saved yet.'}
             </EmptyRow>
           ) : (
             <ul className="space-y-2">
@@ -246,11 +280,13 @@ function OrderCard({
     <li className="rounded-lg border border-border bg-surface-subtle px-3.5 py-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <span className="font-mono text-xs font-semibold">{order.orderNumber}</span>
-          <p className="tabular mt-0.5 text-[11px] text-faint">
+          <span className="tabular text-sm font-semibold">
             {order.tradeType === 'SELL' ? 'Sold' : 'Bought'}
             {order.amount ? ` ${order.amount} ${order.asset}` : ` ${order.asset}`}
-            {order.price ? ` @ ${order.price} ${order.fiat}` : ''}
+          </span>
+          <p className="tabular mt-0.5 text-[11px] text-faint">
+            {order.price ? `1 ${order.asset} = ${order.price} ${order.fiat} · ` : ''}
+            order <span className="font-mono">{order.orderNumber}</span>
             {' · '}
             {new Date(order.createdAt).toLocaleDateString(undefined, {
               month: 'short',
@@ -259,16 +295,17 @@ function OrderCard({
           </p>
         </div>
         <span className="flex shrink-0 items-center gap-1.5">
-          <Chip tone={tone}>{order.status.toLowerCase()}</Chip>
+          <Chip tone={tone}>{STATUS_LABELS[order.status as Status] ?? order.status.toLowerCase()}</Chip>
           <select
             value={order.status}
             onChange={(event) => onStatus(order.id, event.target.value as Status)}
             aria-label="Change status"
+            title="Change status"
             className="h-[26px] rounded-md border border-border bg-surface px-1.5 text-[11px] text-muted outline-none transition hover:border-border-strong"
           >
             {STATUSES.map((status) => (
               <option key={status} value={status}>
-                {status.toLowerCase()}
+                {STATUS_LABELS[status]}
               </option>
             ))}
           </select>

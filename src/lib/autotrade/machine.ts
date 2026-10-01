@@ -50,10 +50,10 @@ export function isRunSettled(state: string): boolean {
 }
 
 export const RUN_STATE_LABELS: Record<RunState, string> = {
-  CONVERT_QUOTED: 'Converting SOL → USDT',
-  CONVERTED: 'Converted · publishing ad',
-  AD_REQUESTED: 'Publishing ad',
-  AD_POSTED: 'Ad online',
-  CONVERT_FAILED: 'Convert failed',
-  AD_FAILED: 'Ad not published',
+  CONVERT_QUOTED: 'Exchanging SOL to USDT',
+  CONVERTED: 'Exchanged · posting sale ad',
+  AD_REQUESTED: 'Posting sale ad',
+  AD_POSTED: 'Sale ad is live',
+  CONVERT_FAILED: 'Exchange failed',
+  AD_FAILED: 'Sale ad not posted',
 };

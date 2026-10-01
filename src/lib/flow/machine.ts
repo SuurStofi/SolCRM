@@ -88,29 +88,29 @@ export function isFailure(state: FlowState): boolean {
 export function resumeAction(state: FlowState): string | null {
   switch (state) {
     case 'CHAIN_CONFIRMED':
-      return 'Check whether Binance has credited the deposit';
+      return 'Check if it arrived on Binance';
     case 'CREDIT_TIMEOUT':
-      return 'Re-check Binance for the deposit credit';
+      return 'Check again';
     case 'CONVERT_FAILED':
-      return 'Retry the SOL -> USDT convert (funds are already on Binance)';
+      return 'Try exchanging again (your SOL is safe on Binance)';
     case 'BINANCE_CREDITED':
-      return 'Convert SOL -> USDT';
+      return 'Exchange SOL to USDT';
     case 'CHAIN_FAILED':
-      return 'Start a new transfer (nothing was moved)';
+      return 'Nothing was sent — start again above';
     default:
       return null;
   }
 }
 
 export const STATE_LABELS: Record<FlowState, string> = {
-  DRAFT: 'Draft',
-  AWAITING_SIGNATURE: 'Awaiting your signature',
-  SUBMITTED: 'Submitted to network',
-  CHAIN_CONFIRMED: 'Confirmed on-chain',
-  BINANCE_CREDITED: 'Credited on Binance',
-  CONVERT_QUOTED: 'Quote received',
-  CONVERTED: 'Converted to USDT',
-  CHAIN_FAILED: 'Transfer failed',
-  CREDIT_TIMEOUT: 'Awaiting Binance credit',
-  CONVERT_FAILED: 'Convert failed',
+  DRAFT: 'Started',
+  AWAITING_SIGNATURE: 'Approve in your wallet',
+  SUBMITTED: 'Sending…',
+  CHAIN_CONFIRMED: 'Sent · on its way to Binance',
+  BINANCE_CREDITED: 'On Binance · ready to exchange',
+  CONVERT_QUOTED: 'Price received',
+  CONVERTED: 'Done · exchanged to USDT',
+  CHAIN_FAILED: 'Sending failed',
+  CREDIT_TIMEOUT: 'Not on Binance yet',
+  CONVERT_FAILED: 'Exchange failed',
 };

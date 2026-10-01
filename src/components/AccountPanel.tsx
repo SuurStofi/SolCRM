@@ -40,7 +40,7 @@ export function AccountPanel() {
 
   return (
     <Panel
-      title="Account"
+      title="My account"
       subtitle={`Since ${new Date(account.createdAt).toLocaleDateString()}`}
       icon={<PersonMark />}
       action={
@@ -59,7 +59,7 @@ export function AccountPanel() {
 
         {/* Wallets */}
         <div>
-          <SectionLabel trailing={<Chip>{account.wallets.length}</Chip>}>Linked wallets</SectionLabel>
+          <SectionLabel trailing={<Chip>{account.wallets.length}</Chip>}>My wallets</SectionLabel>
           <div>
             {account.wallets.map((wallet) => (
               <Row key={wallet.address}>
@@ -78,7 +78,7 @@ export function AccountPanel() {
                     className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted transition hover:text-bad disabled:opacity-40"
                   >
                     {busy === wallet.address && <Spinner />}
-                    <span>Unlink</span>
+                    <span>Remove</span>
                   </button>
                 )}
               </Row>
@@ -89,7 +89,8 @@ export function AccountPanel() {
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-subtle px-3 py-2.5">
               <p className="text-xs text-muted">
                 Connected wallet{' '}
-                <span className="font-mono">{shortenAddress(connected, 4)}</span> is not linked.
+                <span className="font-mono">{shortenAddress(connected, 4)}</span> is not added to
+                your account yet.
               </p>
               <button
                 type="button"
@@ -98,13 +99,13 @@ export function AccountPanel() {
                 className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
               >
                 {busy === 'link' && <Spinner className="border-t-accent-fg" />}
-                <span>Link this wallet</span>
+                <span>Add this wallet</span>
               </button>
             </div>
           )}
           <p className="mt-2 text-[11px] leading-relaxed text-faint">
-            Any linked wallet can sign in. To add one, switch to it in your wallet extension and
-            press Link — you sign a message to prove it is yours.
+            You can sign in with any of these. To add another, switch to it in Phantom and press
+            Add — you sign a short message to prove it is yours (free, nothing is sent).
           </p>
         </div>
 
@@ -159,11 +160,17 @@ function BinanceKeySection() {
     <div>
       <SectionLabel
         trailing={
-          stored ? <Chip tone="good">linked</Chip> : <Chip tone="warn">not linked</Chip>
+          stored ? <Chip tone="good">connected</Chip> : <Chip tone="warn">not connected</Chip>
         }
       >
-        Binance API key
+        Binance connection (API key)
       </SectionLabel>
+
+      <p className="mb-2.5 text-[11px] leading-relaxed text-muted">
+        An API key is a password for apps. It lets this app see your Binance balance and
+        exchange coins for you. It cannot take money out of Binance unless you allow
+        Withdrawals.
+      </p>
 
       {error && (
         <div className="mb-3">
@@ -176,10 +183,10 @@ function BinanceKeySection() {
           <span className="font-mono text-xs text-muted">••••{stored.apiKeyHint}</span>
           <span className="flex items-center gap-3">
             <Chip tone={stored.canTrade ? 'accent' : 'warn'}>
-              {stored.canTrade ? 'convert ready' : 'convert off'}
+              {stored.canTrade ? 'can exchange' : 'cannot exchange'}
             </Chip>
             <Chip tone={stored.canWithdraw ? 'warn' : 'good'}>
-              {stored.canWithdraw ? 'withdraw on' : 'withdraw off'}
+              {stored.canWithdraw ? 'can withdraw' : 'cannot withdraw'}
             </Chip>
             <button
               type="button"
@@ -234,7 +241,7 @@ function BinanceKeySection() {
               className="inline-flex items-center gap-2 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {busy && <Spinner className="border-t-accent-fg" />}
-              <span>Verify &amp; save</span>
+              <span>Check and save</span>
             </button>
             {stored && (
               <button
@@ -248,8 +255,8 @@ function BinanceKeySection() {
             )}
           </div>
           <p className="text-[11px] leading-relaxed text-faint">
-            Create it in Binance → API Management with <b>Enable Reading</b> and, for
-            converting, <b>Enable Spot &amp; Margin Trading</b>.{' '}
+            Where to get it: Binance → Profile → <b>API Management</b> → Create API. Switch on{' '}
+            <b>Enable Reading</b> and, to sell or buy, <b>Enable Spot &amp; Margin Trading</b>.{' '}
             {account.autoWithdraw ? (
               <>
                 Auto-withdraw is on, so also enable <b>Withdrawals</b> and restrict the key to this
@@ -297,10 +304,10 @@ function AutoWithdrawSection() {
 
   return (
     <div>
-      <SectionLabel>Bought SOL</SectionLabel>
+      <SectionLabel>Where bought SOL goes</SectionLabel>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium">Auto-withdraw to my wallet</p>
+          <p className="text-sm font-medium">Send bought SOL to my wallet automatically</p>
           <p className="mt-0.5 text-[11px] leading-relaxed text-faint">
             {on
               ? "After a buy, the SOL is withdrawn from Binance to the linked wallet you pick. Needs a Binance key with Withdrawals enabled and restricted to this server's IP."

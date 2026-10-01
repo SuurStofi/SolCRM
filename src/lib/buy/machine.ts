@@ -53,8 +53,8 @@ export function isBuyFailure(state: BuyState): boolean {
 }
 
 export const BUY_STATE_LABELS: Record<BuyState, string> = {
-  CONVERT_QUOTED: 'Quote received',
-  CONVERTED: 'Bought · on Binance',
+  CONVERT_QUOTED: 'Price received',
+  CONVERTED: 'Bought · SOL is on Binance',
   WITHDRAW_REQUESTED: 'Withdrawing to wallet',
   WITHDRAWN: 'In your wallet',
   CONVERT_FAILED: 'Buy failed',

@@ -192,7 +192,7 @@ export function BuyPanel() {
   return (
     <Panel
       title="Buy SOL"
-      subtitle={autoWithdraw ? 'USDT → SOL → your wallet' : 'USDT → SOL · kept on Binance'}
+      subtitle={autoWithdraw ? 'USDT → SOL → your wallet' : 'USDT → SOL · stays on Binance'}
       icon={<CartMark />}
       action={
         <RefreshButton onClick={() => void Promise.all([refresh(), loadInfo()])} loading={busy !== null} />
@@ -206,12 +206,12 @@ export function BuyPanel() {
             trailing={
               info && (
                 <span className="tabular text-[11px] text-faint">
-                  {info.usdtFree} USDT available
+                  you have {info.usdtFree} USDT
                 </span>
               )
             }
           >
-            Spend USDT on Binance
+            How much USDT to spend
           </SectionLabel>
 
           <div className="flex gap-2">
@@ -245,7 +245,7 @@ export function BuyPanel() {
               className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {busy === 'new' && <Spinner className="border-t-accent-fg" />}
-              <span>Get quote</span>
+              <span>See price</span>
             </button>
           </div>
 
@@ -271,11 +271,11 @@ export function BuyPanel() {
           {autoWithdraw && info?.withdraw && (
             <div className="mt-2 space-y-1">
               <div className="flex items-center justify-between text-[11px]">
-                <span className="text-faint">Binance withdrawal fee</span>
+                <span className="text-faint">Binance fee to send it to your wallet</span>
                 <span className="tabular text-muted">{info.withdraw.withdrawFee} SOL</span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
-                <span className="text-faint">Withdrawal minimum</span>
+                <span className="text-faint">Smallest amount Binance will send</span>
                 <span className="tabular text-muted">{info.withdraw.withdrawMin} SOL</span>
               </div>
             </div>
@@ -283,18 +283,18 @@ export function BuyPanel() {
 
           <p className={`mt-2 text-[11px] leading-relaxed ${overBalance || underMin ? 'text-bad' : 'text-faint'}`}>
             {!hasKey
-              ? 'Add your Binance API key under Account to buy.'
+              ? 'Connect your Binance account first (My account).'
               : overBalance
                 ? `Not enough USDT on Binance — ${info?.usdtFree} available.`
                 : underMin
-                  ? `Binance's minimum for USDT → SOL is ${info?.minUsdt} USDT.`
+                  ? `Binance needs at least ${info?.minUsdt} USDT for this.`
                   : autoWithdraw
-                    ? 'You confirm the rate first. After the buy, the SOL is withdrawn to the chosen wallet automatically.'
-                    : 'You confirm the rate first. The SOL stays on your Binance balance — auto-withdraw is off (Account).'}
+                    ? 'You see the price first and nothing happens until you confirm. Then the SOL is sent to the chosen wallet.'
+                    : 'You see the price first and nothing happens until you confirm. The SOL stays on your Binance — to send it to your wallet automatically, turn on auto-withdraw in My account.'}
           </p>
           {autoWithdraw && info?.withdraw && !info.withdraw.withdrawEnable && (
             <p className="mt-1 text-[11px] text-warn">
-              Binance has SOL withdrawals suspended right now; a buy will stay on Binance until they resume.
+              Binance has paused sending SOL out right now. What you buy will wait on Binance until it resumes.
             </p>
           )}
         </div>
@@ -365,11 +365,11 @@ function BuyCard({
   // One next step per state, so the card never offers two conflicting actions.
   let next: { label: string; run: () => void } | null = null;
   if (!quote) {
-    if (buy.state === 'CONVERT_QUOTED' && buy.convertOrderId) next = { label: 'Check order', run: onCheckOrder };
-    else if (buy.state === 'CONVERT_QUOTED' || buy.state === 'CONVERT_FAILED') next = { label: 'Get a new quote', run: onRequote };
-    else if (buy.state === 'CONVERTED' && autoWithdraw) next = { label: 'Withdraw to wallet', run: onWithdraw };
-    else if (buy.state === 'WITHDRAW_FAILED') next = { label: 'Retry withdrawal', run: onWithdraw };
-    else if (buy.state === 'WITHDRAW_REQUESTED') next = { label: 'Check withdrawal', run: onCheckWithdraw };
+    if (buy.state === 'CONVERT_QUOTED' && buy.convertOrderId) next = { label: 'Check status', run: onCheckOrder };
+    else if (buy.state === 'CONVERT_QUOTED' || buy.state === 'CONVERT_FAILED') next = { label: 'Get a new price', run: onRequote };
+    else if (buy.state === 'CONVERTED' && autoWithdraw) next = { label: 'Send to my wallet', run: onWithdraw };
+    else if (buy.state === 'WITHDRAW_FAILED') next = { label: 'Try sending again', run: onWithdraw };
+    else if (buy.state === 'WITHDRAW_REQUESTED') next = { label: 'Check if it arrived', run: onCheckWithdraw };
   }
 
   return (
@@ -401,7 +401,7 @@ function BuyCard({
         {buy.solReceived && <Chip tone="good">{buy.solReceived} SOL bought</Chip>}
         {buy.withdrawAmount && (
           <Chip tone={buy.state === 'WITHDRAWN' ? 'good' : 'neutral'}>
-            {buy.withdrawAmount} SOL withdrawn · fee {buy.withdrawFee}
+            {buy.withdrawAmount} SOL sent to wallet · fee {buy.withdrawFee}
           </Chip>
         )}
       </div>
@@ -414,20 +414,19 @@ function BuyCard({
         <div className="mt-3 rounded-lg border border-accent/30 bg-accent/5 px-3 py-2.5">
           <div className="flex items-start justify-between gap-2">
             <p className="text-xs">
-              <span className="font-semibold">{quote.quote.fromAmount} USDT</span> →{' '}
-              <span className="font-semibold">{quote.quote.toAmount} SOL</span>
-              <span className="ml-1.5 text-faint">@ {quote.quote.ratio}</span>
+              You pay <span className="font-semibold">{quote.quote.fromAmount} USDT</span>, you
+              get <span className="font-semibold">{quote.quote.toAmount} SOL</span>
             </p>
             <Chip tone={expired ? 'bad' : secondsLeft <= 10 ? 'warn' : 'accent'}>
-              {expired ? 'expired' : `${secondsLeft}s left`}
+              {expired ? 'price expired' : `price holds ${secondsLeft}s`}
             </Chip>
           </div>
           <p className="mt-1 text-[11px] text-faint">
             {expired
-              ? 'This rate is no longer valid. Request a new quote to buy.'
-              : autoWithdraw
-                ? 'Buys immediately and cannot be undone; then withdraws the SOL to your wallet.'
-                : 'Buys immediately and cannot be undone.'}
+              ? 'This price is no longer valid. Get a new one to continue.'
+              : `${solPrice(quote.quote)} Happens right away and cannot be undone${
+                  autoWithdraw ? '; then the SOL is sent to your wallet.' : '.'
+                }`}
           </p>
           <div className="mt-2 flex gap-2">
             <button
@@ -437,7 +436,7 @@ function BuyCard({
               className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {busy && <Spinner className="border-t-accent-fg" />}
-              <span>{expired ? 'New quote' : 'Confirm buy'}</span>
+              <span>{expired ? 'Get new price' : 'Confirm and buy'}</span>
             </button>
             <button
               type="button"
@@ -467,12 +466,18 @@ function BuyCard({
 
       {buy.state === 'CONVERTED' && !autoWithdraw && (
         <p className="mt-2 text-[11px] text-faint">
-          The SOL is on your Binance balance. Switch on auto-withdraw under Account to send it to a
-          wallet from here.
+          The SOL is on your Binance. To send it to your wallet from here, turn on auto-withdraw in
+          My account.
         </p>
       )}
     </li>
   );
+}
+
+/** "1 SOL = x USDT", worked out from the amounts so it reads the same way as on Sell. */
+function solPrice(quote: Quote): string {
+  const perSol = Number(quote.fromAmount) / Number(quote.toAmount);
+  return Number.isFinite(perSol) ? `1 SOL = ${perSol.toFixed(2)} USDT.` : '';
 }
 
 function CartMark() {

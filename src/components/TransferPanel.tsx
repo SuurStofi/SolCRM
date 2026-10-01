@@ -212,7 +212,7 @@ export function TransferPanel() {
           id: flowId,
         });
         if (!result.credited) {
-          setError('Binance has not credited this deposit yet. Credit can lag by several minutes.');
+          setError('Not on Binance yet. It can take a few minutes — try again shortly.');
         }
         await refresh();
       } catch (cause) {
@@ -269,7 +269,7 @@ export function TransferPanel() {
   return (
     <Panel
       title="Sell SOL"
-      subtitle="SOL → Binance → USDT"
+      subtitle="Your wallet → Binance → USDT"
       icon={<ArrowsMark />}
       action={
         <RefreshButton
@@ -287,12 +287,12 @@ export function TransferPanel() {
             trailing={
               fees && (
                 <span className="tabular text-[11px] text-faint">
-                  balance {formatSol(fees.balanceLamports)} SOL
+                  in wallet: {formatSol(fees.balanceLamports)} SOL
                 </span>
               )
             }
           >
-            Send SOL to Binance
+            How much SOL to sell
           </SectionLabel>
 
           <div className="flex gap-2">
@@ -333,7 +333,7 @@ export function TransferPanel() {
               className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {busy === 'transfer' && <Spinner className="border-t-accent-fg" />}
-              <span>Send</span>
+              <span>Send to Binance</span>
             </button>
           </div>
 
@@ -342,19 +342,19 @@ export function TransferPanel() {
           {fees && (
             <div className="mt-2 space-y-1">
               <div className="flex items-center justify-between text-[11px]">
-                <span className="text-faint">Network fee</span>
+                <span className="text-faint">Network fee (paid to Solana)</span>
                 <span className="tabular text-muted">
                   {formatSol(fees.feeLamports)} SOL
                 </span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
-                <span className="text-faint">Rent-exempt minimum kept</span>
+                <span className="text-faint">Must stay in the wallet (Solana rule)</span>
                 <span className="tabular text-muted">
                   {formatSol(fees.rentExemptLamports)} SOL
                 </span>
               </div>
               <div className="flex items-center justify-between border-t border-border/60 pt-1 text-[11px]">
-                <span className="font-medium text-muted">Max sendable</span>
+                <span className="font-medium text-muted">Most you can send</span>
                 <span className="tabular font-medium">
                   {formatSol(fees.maxSendableLamports)} SOL
                 </span>
@@ -367,7 +367,7 @@ export function TransferPanel() {
             <p className="mt-2 text-[11px] leading-relaxed text-bad">
               Not enough SOL to send. The wallet holds{' '}
               {fees && formatSol(fees.balanceLamports)} SOL, which does not cover the
-              network fee plus the rent-exempt minimum.
+              network fee plus the amount that must stay in the wallet.
             </p>
           ) : amountInvalid ? (
             <p className="mt-2 text-[11px] text-bad">Enter a valid amount.</p>
@@ -379,21 +379,21 @@ export function TransferPanel() {
           ) : (
             <p className="mt-2 text-[11px] leading-relaxed text-faint">
               {!connected
-                ? 'Connect your wallet to send.'
+                ? 'Connect your wallet first (see the steps at the top).'
                 : !connectedWalletLinked
-                  ? 'The connected wallet is not linked to your account — link it under Account to send from it.'
+                  ? 'This wallet is not added to your account yet — add it in My account.'
                   : !hasBinanceKey
-                    ? 'Add your Binance API key under Account — SOL is sent to your own Binance deposit address.'
-                    : 'You approve the transaction in your wallet.'}
+                    ? 'Connect your Binance account first (My account) — the SOL goes to your own Binance.'
+                    : 'Your wallet will ask you to approve. Nothing is exchanged until you confirm the price in the next step.'}
             </p>
           )}
         </div>
 
         {/* History */}
         <div>
-          <SectionLabel>Recent runs</SectionLabel>
+          <SectionLabel>Your sales</SectionLabel>
           {flows.length === 0 ? (
-            <EmptyRow>No transfers yet</EmptyRow>
+            <EmptyRow>No sales yet</EmptyRow>
           ) : (
             <ul className="space-y-2.5">
               {(showAllFlows ? flows : flows.slice(0, FLOW_PREVIEW)).map((flow) => (
@@ -488,11 +488,11 @@ function FlowCard({
       {/* On-chain and Binance credit shown separately: credit lags the chain,
           and conflating them would imply funds are tradeable before they are. */}
       <div className="mt-2.5 flex flex-wrap gap-1.5">
-        <StepChip done={!!flow.chainConfirmedAt} label="on-chain" />
-        <StepChip done={!!flow.binanceCreditedAt} label="credited" />
-        <StepChip done={!!flow.usdtReceived} label="converted" />
+        <StepChip done={!!flow.chainConfirmedAt} label="1 · sent" />
+        <StepChip done={!!flow.binanceCreditedAt} label="2 · on Binance" />
+        <StepChip done={!!flow.usdtReceived} label="3 · exchanged" />
         {flow.usdtReceived && (
-          <Chip tone="good">{flow.usdtReceived} USDT</Chip>
+          <Chip tone="good">you got {flow.usdtReceived} USDT</Chip>
         )}
       </div>
 
@@ -506,18 +506,17 @@ function FlowCard({
         <div className="mt-3 rounded-lg border border-accent/30 bg-accent/5 px-3 py-2.5">
           <div className="flex items-start justify-between gap-2">
             <p className="text-xs">
-              <span className="font-semibold">{quote.quote.fromAmount} SOL</span> →{' '}
-              <span className="font-semibold">{quote.quote.toAmount} USDT</span>
-              <span className="ml-1.5 text-faint">@ {quote.quote.ratio}</span>
+              You give <span className="font-semibold">{quote.quote.fromAmount} SOL</span>, you
+              get <span className="font-semibold">{quote.quote.toAmount} USDT</span>
             </p>
             <Chip tone={expired ? 'bad' : secondsLeft <= 10 ? 'warn' : 'accent'}>
-              {expired ? 'expired' : `${secondsLeft}s left`}
+              {expired ? 'price expired' : `price holds ${secondsLeft}s`}
             </Chip>
           </div>
           <p className="mt-1 text-[11px] text-faint">
             {expired
-              ? 'This rate is no longer valid. Request a new quote to convert.'
-              : 'This executes immediately and cannot be undone.'}
+              ? 'This price is no longer valid. Get a new one to continue.'
+              : `1 SOL = ${quote.quote.ratio} USDT. Happens right away and cannot be undone.`}
           </p>
           <div className="mt-2 flex gap-2">
             <button
@@ -527,7 +526,7 @@ function FlowCard({
               className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {busy && <Spinner className="border-t-accent-fg" />}
-              <span>{expired ? 'New quote' : 'Confirm convert'}</span>
+              <span>{expired ? 'Get new price' : 'Confirm and exchange'}</span>
             </button>
             <button
               type="button"

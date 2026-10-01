@@ -135,7 +135,7 @@ export function BinancePanel() {
         const result = await postJson<{ redeemed: string }>('/api/binance/earn/redeem', {
           asset,
         });
-        setRedeemNote({ text: `Redeeming ${result.redeemed} ${asset} to Spot.`, ok: true });
+        setRedeemNote({ text: `Moving ${result.redeemed} ${asset} to your main balance.`, ok: true });
         await load();
       } catch (cause) {
         setRedeemNote({
@@ -164,16 +164,15 @@ export function BinancePanel() {
 
   return (
     <Panel
-      title="Binance"
-      subtitle="Spot account · read only"
+      title="My Binance"
+      subtitle="Main (Spot) balance · view only"
       icon={<BinanceMark />}
       action={keyVersion !== null && <RefreshButton onClick={load} loading={loading} />}
     >
       <div className="space-y-6">
         {keyVersion === null && (
           <EmptyRow>
-            No Binance API key linked yet. Add yours under Account to see balances and convert —
-            each account uses its own Binance.
+            Binance is not connected yet. Add your API key in My account to see your balance here.
           </EmptyRow>
         )}
 
@@ -181,8 +180,8 @@ export function BinancePanel() {
           <ErrorNote title="Could not load Binance account">
             <p>{error}</p>
             <p className="mt-2 opacity-80">
-              Check that the key saved under Account still exists in Binance, has
-              &quot;Enable Reading&quot;, and that this server&apos;s IP is allowlisted.
+              Check in Binance that the key saved in My account still exists, has
+              &quot;Enable Reading&quot; switched on, and allows this server&apos;s IP address.
             </p>
           </ErrorNote>
         )}
@@ -205,9 +204,9 @@ export function BinancePanel() {
                 here makes an over-scoped key impossible to miss. */}
             {account.permissions.canWithdraw && (
               <div className="rounded-lg border border-warn/30 bg-warn-bg px-3.5 py-2.5 text-xs leading-relaxed text-warn">
-                <span className="font-semibold">Withdrawals are enabled</span> on this API
-                key. Nothing here withdraws — turning it off in Binance limits the damage
-                if the key ever leaks.
+                <span className="font-semibold">This API key can take money out of Binance.</span>{' '}
+                This page never does that. For safety, switch off Withdrawals for the key in
+                Binance unless you use auto-withdraw.
               </div>
             )}
 
@@ -216,11 +215,11 @@ export function BinancePanel() {
                 trailing={
                   <div className="flex gap-1">
                     <Chip tone={account.permissions.canTrade ? 'accent' : 'warn'}>
-                      {account.permissions.canTrade ? 'convert ready' : 'convert off'}
+                      {account.permissions.canTrade ? 'can exchange' : 'cannot exchange'}
                     </Chip>
-                    {account.permissions.ipRestricted && <Chip tone="good">IP locked</Chip>}
+                    {account.permissions.ipRestricted && <Chip tone="good">IP protected</Chip>}
                     <Chip tone={account.permissions.canWithdraw ? 'bad' : 'good'}>
-                      {account.permissions.canWithdraw ? 'withdraw on' : 'withdraw off'}
+                      {account.permissions.canWithdraw ? 'can withdraw' : 'cannot withdraw'}
                     </Chip>
                   </div>
                 }
@@ -241,13 +240,13 @@ export function BinancePanel() {
                       <Row key={balance.asset}>
                         <span className="flex items-center gap-1.5 font-medium">
                           {baseAsset}
-                          {isEarn && <Chip tone="warn">Earn</Chip>}
+                          {isEarn && <Chip tone="warn">in savings (Earn)</Chip>}
                         </span>
                         <span className="flex items-center justify-end gap-2 text-right">
                           <span className="tabular font-medium">{balance.free}</span>
                           {Number(balance.locked) > 0 && (
                             <span className="tabular text-xs text-warn">
-                              +{balance.locked} locked
+                              +{balance.locked} on hold
                             </span>
                           )}
                           {isEarn && (
@@ -258,7 +257,7 @@ export function BinancePanel() {
                               className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-foreground transition hover:border-border-strong disabled:opacity-40"
                             >
                               {redeeming === baseAsset && <Spinner />}
-                              <span>Redeem to Spot</span>
+                              <span>Move to main balance</span>
                             </button>
                           )}
                         </span>
@@ -267,12 +266,12 @@ export function BinancePanel() {
                   })}
                 </div>
               ) : (
-                <EmptyRow>No non-zero balances</EmptyRow>
+                <EmptyRow>Your Binance balance is empty</EmptyRow>
               )}
             </div>
 
             <div>
-              <SectionLabel>Recent SOL deposits</SectionLabel>
+              <SectionLabel>SOL that arrived on Binance</SectionLabel>
               {deposits.length > 0 ? (
                 <div>
                   {(showAllDeposits ? deposits : deposits.slice(0, DEPOSIT_PREVIEW)).map((deposit) => (
@@ -296,7 +295,7 @@ export function BinancePanel() {
                   ))}
                 </div>
               ) : (
-                <EmptyRow>No recent SOL deposits</EmptyRow>
+                <EmptyRow>No SOL has arrived recently</EmptyRow>
               )}
               <ShowMore
                 expanded={showAllDeposits}
