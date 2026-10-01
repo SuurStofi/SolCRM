@@ -1,12 +1,15 @@
 {
   "name": "solcrm",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma generate",
+    "db:setup": "prisma generate && prisma migrate deploy",
+    "db:status": "prisma migrate status"
   },
   "dependencies": {
     "@prisma/client": "^7.10.0",
@@ -15,6 +18,7 @@
     "@solana/wallet-adapter-react": "^0.15.40",
     "@solana/wallet-adapter-react-ui": "^0.9.40",
     "@solana/web3.js": "^1.99.0",
+    "geist": "^1.7.2",
     "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",

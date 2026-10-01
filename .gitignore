@@ -27,9 +27,18 @@ yarn-error.log*
 .env.*.local
 *.key
 
+# Credential archives -- a zip of .env.local is still a secret.
+*.env.zip
+binance.env.zip
+*.env.tar
+*.env.tar.gz
+secrets*.zip
+
 # database (may contain trade history + Binance data)
 /prisma/*.db
 /prisma/*.db-journal
+# local safety copies made before migrations -- same data as dev.db
+/prisma/*.db.backup-*
 *.sqlite
 *.sqlite3
 
