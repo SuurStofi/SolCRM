@@ -13,26 +13,11 @@ Multi-account dashboard: Solana wallet → Binance → P2P. You sign in with a S
 ```bash
 npm install
 cp .env.example .env.local   # then set APP_ENCRYPTION_KEY, see below
-npm run db:setup             # generate client + apply migrations
+npx prisma migrate dev       # creates / upgrades prisma/dev.db
 npm run dev                  # http://localhost:3000
 ```
 
 Needs Node ≥ 20.9 (Next 16). `better-sqlite3` is a native module built for whichever Node ran `npm install`; switching Node versions afterwards needs `npm rebuild better-sqlite3`.
-
-### After pulling changes
-
-Run `npm run db:setup` whenever `prisma/schema.prisma` or `prisma/migrations/` changed.
-
-Skipping it produces `Cannot read properties of undefined (reading 'findMany')` —
-`prisma.<model>` is `undefined` because the generated client predates the model.
-The two halves fail independently, so check both with `npm run db:status`:
-
-- **Client stale** (missing models) — `npm install` overwrites
-  `node_modules/@prisma/client`, reverting it to whatever was generated last.
-  A `postinstall` hook now regenerates it automatically.
-- **Database behind** (missing tables) — migrations on disk were never applied.
-
-The dev server reads the client once at startup, so **restart it** after regenerating.
 
 ### 1. Encryption key (required)
 
@@ -97,15 +82,15 @@ SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
 
 `NEXT_PUBLIC_SOLANA_RPC_URL` also works and bypasses the proxy entirely — only use it for an endpoint that permits browser origins, and **never** put a key you care about behind a `NEXT_PUBLIC_` name, since those are embedded in the client bundle.
 
-### 6. BestChange (optional — Exchanger and Compare tabs)
+### 6. BestChange (optional — Dealer and Compare tabs)
 
 The dashboard has three tabs:
 
 | Tab | What it does |
 |---|---|
 | **P2P** | wallet → Binance: everything above (sell/buy SOL, P2P ads, order archive) and **Autotrade** |
-| **Exchanger** | exchangers on [BestChange](https://www.bestchange.com) that **buy or sell** SOL, USDT (Solana) or USDC (Solana) through e-money, bank accounts and cards, picked the way BestChange lists them — payment system, then currency (*Bank card* → USD, RUB, UAH …; *WebMoney* → WMZ, WME; PayPal, YooMoney, Volet, Alipay …). Each offer is set against Binance P2P |
-| **Compare** | exchanger offers and Binance P2P for one crypto, side and fiat, on one scale (fiat per 1 unit), sortable by price; filters for Binance merchants only, payment method, and whether an amount fits |
+| **Dealer** | dealers on [BestChange](https://www.bestchange.com) that **buy or sell** SOL, USDT (Solana) or USDC (Solana) through e-money, bank accounts and cards, picked the way BestChange lists them — payment system, then currency (*Bank card* → USD, RUB, UAH …; *WebMoney* → WMZ, WME; PayPal, YooMoney, Volet, Alipay …). Each offer is set against Binance P2P |
+| **Compare** | dealer offers and Binance P2P for one crypto, side and fiat, on one scale (fiat per 1 unit), sortable by price; filters for Binance merchants only, payment method, and whether an amount fits |
 
 BestChange serves rates to partners only. Get a free key at [bestchange.com/partner](https://www.bestchange.com/partner/) (Profile → *API to get exchange rates*) and add it to `.env.local`:
 
@@ -113,14 +98,14 @@ BestChange serves rates to partners only. Get a free key at [bestchange.com/part
 BESTCHANGE_API_KEY=your_32_character_key
 ```
 
-Without it the Exchanger tab says how to connect and Compare shows Binance only. One key serves the whole server, so both tabs require sign-in, like P2P search.
+Without it the Dealer tab says how to connect and Compare shows Binance only. One key serves the whole server, so both tabs require sign-in, like P2P search.
 
 - **Rails** are BestChange's groups *Digital currencies*, *Bank accounts and cards* and *Online banking* — taken from the data, not a hand-kept list. *Money transfers* (WU, MoneyGram, Ria) and cash are left out: both are collected as cash.
 - **Payment systems** come from BestChange's `ps` number: rails sharing one are a system, and their common leading words are its name.
 - **Fiat of a rail** is read off the end of its code (`SBERRUB` → RUB). WebMoney's `WMZ` / `WME` are pegged to USD / EUR; anything else without an ISO suffix is left out of Compare.
 - **Measured on 2026-09-28 with a live key:** `rate`, `rankrate` and a presence's `best` are always units of the FROM currency per 1 unit of the TO currency. Buying (fiat → SOL) that is fiat per SOL already (Sberbank RUB → SOL: `10585`); selling it is the inverse (SOL → Sberbank RUB: `0.0000916`). `inmin` / `inmax` are in the FROM currency, `reserve` in the TO currency; `inmax` is often far above the reserve, which is the real cap. Rows arrive unsorted.
 - **Binance side:** P2P ads for the crypto itself (selling lists buyers, buying lists sellers), and for SOL also the route via USDT at the spot price. `publisherType` is ignored by the ad list, so *merchants only* filters on the ads' own `userType`. Neither route includes network fees or the Convert spread.
-- The exchange itself happens on the exchanger's site, and P2P orders on Binance. Nothing in these two tabs sends money.
+- The exchange itself happens on the dealer's site, and P2P orders on Binance. Nothing in these two tabs sends money.
 
 ### 7. Autotrade (P2P tab)
 
@@ -224,8 +209,8 @@ src/
 │     │  └─ list/                 recent runs
 │     ├─ exchange/
 │     │  ├─ rails/                e-money / bank / card rails per crypto and side
-│     │  └─ offers/               exchanger offers + Binance reference
-│     ├─ compare/                 exchangers vs Binance P2P, one scale
+│     │  └─ offers/               dealer offers + Binance reference
+│     ├─ compare/                 dealers vs Binance P2P, one scale
 │     ├─ autotrade/               settings, runs, check now, run actions
 │     ├─ p2p/
 │     │  ├─ ads/                  public ad search
@@ -234,7 +219,7 @@ src/
 ├─ components/
 │  ├─ AuthProvider.tsx            session state, sign-in / link via signMessage
 │  ├─ Dashboard.tsx               sign-in screen or the three tabs
-│  ├─ ExchangePanel.tsx           Exchanger tab (BestChange)
+│  ├─ ExchangePanel.tsx           Dealer tab (BestChange)
 │  ├─ ComparePanel.tsx            Compare tab
 │  ├─ market-ui.tsx               shared bits of those two tabs
 │  ├─ AutoTradePanel.tsx          autotrade settings and runs
@@ -275,7 +260,7 @@ src/
    │  ├─ store.ts                 persistence, compare-and-set, claim
    │  ├─ engine.ts                trigger, preflight, convert, publish
    │  └─ scheduler.ts             60 s background timer
-   ├─ compare.ts                  crypto <-> fiat across exchangers and Binance
+   ├─ compare.ts                  crypto <-> fiat across dealers and Binance
    ├─ solana/
    │  ├─ read.ts                  balance, SPL tokens, tx history
    │  └─ transfer.ts              fees, max sendable, send + confirm

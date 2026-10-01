@@ -48,7 +48,7 @@ const TABS = [
   { id: 'home', label: 'Home', hint: 'Your wallet & account' },
   { id: 'market', label: 'Market', hint: 'Exchange & transfer' },
   { id: 'p2p', label: 'P2P', hint: 'Trade with people & auto-sell' },
-  { id: 'exchange', label: 'Exchanger', hint: 'Buy & sell · BestChange' },
+  { id: 'exchange', label: 'Dealer', hint: 'Buy & sell · BestChange' },
   { id: 'compare', label: 'Compare', hint: 'Sort by price' },
 ] as const;
 
