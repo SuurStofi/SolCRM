@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { binanceRequest, ensureTimeSynced } from './client';
+import { signedTimestamp } from './sign';
 import { SafeError } from './redact';
 
 /**
@@ -18,6 +19,12 @@ export interface ConvertQuote {
   validTimestamp: number;
   toAmount: string;
   fromAmount: string;
+  /**
+   * How long the quote still has, rather than when it expires. Derived here
+   * because `validTimestamp` is an instant in Binance's clock: a browser whose
+   * own clock is off would otherwise render a meaningless countdown.
+   */
+  validForMs: number;
 }
 
 /**
@@ -33,17 +40,25 @@ export async function getConvertQuote(
   fromAmount: string,
 ): Promise<ConvertQuote> {
   await ensureTimeSynced();
-  return binanceRequest<ConvertQuote>('/sapi/v1/convert/getQuote', {
-    method: 'POST',
-    signed: true,
-    params: {
-      fromAsset,
-      toAsset,
-      fromAmount,
-      walletType: 'SPOT',
-      validTime: '30s',
+  const quote = await binanceRequest<Omit<ConvertQuote, 'validForMs'>>(
+    '/sapi/v1/convert/getQuote',
+    {
+      method: 'POST',
+      signed: true,
+      params: {
+        fromAsset,
+        toAsset,
+        fromAmount,
+        walletType: 'SPOT',
+        validTime: '30s',
+      },
     },
-  });
+  );
+
+  return {
+    ...quote,
+    validForMs: Math.max(0, quote.validTimestamp - signedTimestamp()),
+  };
 }
 
 export interface ConvertAcceptance {
@@ -116,9 +131,72 @@ export async function getConvertPairLimits(
   );
   const pair = Array.isArray(result) ? result[0] : result;
   if (!pair) {
-    throw new SafeError(`Binance does not support converting ${fromAsset} to ${toAsset}.`);
+    throw new SafeError(`Binance does not support converting ${fromAsset} to ${toAsset}.`, {
+      status: 404,
+    });
   }
   return pair;
+}
+
+/**
+ * Every convertible pair Binance offers (~6,400 of them, ~430 assets).
+ *
+ * Unsigned and large, so it is cached per process: the list changes when
+ * Binance lists or delists an asset, not minute to minute, and refetching it
+ * on every page load would waste the weight budget.
+ */
+let pairCache: { pairs: ConvertPairLimits[]; fetchedAt: number } | null = null;
+const PAIR_CACHE_MS = 30 * 60 * 1000;
+
+export async function getAllConvertPairs(): Promise<ConvertPairLimits[]> {
+  if (pairCache && Date.now() - pairCache.fetchedAt < PAIR_CACHE_MS) {
+    return pairCache.pairs;
+  }
+  const result = await binanceRequest<ConvertPairLimits[]>('/sapi/v1/convert/exchangeInfo');
+  const pairs = Array.isArray(result) ? result : [];
+  pairCache = { pairs, fetchedAt: Date.now() };
+  return pairs;
+}
+
+export interface ConvertibleAsset {
+  asset: string;
+  /** Spendable amount on the spot wallet, '0' when none is held. */
+  free: string;
+  /** Assets this one can be converted into. */
+  to: string[];
+}
+
+/**
+ * The asset menu for a free-form exchange: what Binance can convert, annotated
+ * with what the user actually holds.
+ *
+ * Assets with a balance are listed first so the realistic choices are at the
+ * top of a 400-entry list.
+ */
+export async function getConvertibleAssets(
+  balances: Record<string, string>,
+): Promise<ConvertibleAsset[]> {
+  const pairs = await getAllConvertPairs();
+
+  const targets = new Map<string, Set<string>>();
+  for (const pair of pairs) {
+    if (!targets.has(pair.fromAsset)) targets.set(pair.fromAsset, new Set());
+    targets.get(pair.fromAsset)!.add(pair.toAsset);
+  }
+
+  const assets: ConvertibleAsset[] = [...targets.entries()].map(([asset, to]) => ({
+    asset,
+    free: balances[asset] ?? '0',
+    to: [...to].sort(),
+  }));
+
+  return assets.sort((a, b) => {
+    const aHas = Number(a.free) > 0;
+    const bHas = Number(b.free) > 0;
+    if (aHas !== bHas) return aHas ? -1 : 1;
+    if (aHas && bHas) return Number(b.free) - Number(a.free);
+    return a.asset.localeCompare(b.asset);
+  });
 }
 
 /** Terminal success state for a convert order. */

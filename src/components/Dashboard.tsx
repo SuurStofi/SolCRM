@@ -10,6 +10,7 @@ import { WalletPanel } from './WalletPanel';
 import { BinancePanel } from './BinancePanel';
 import { TransferPanel } from './TransferPanel';
 import { BuyPanel } from './BuyPanel';
+import { ConvertPanel } from './ConvertPanel';
 import { P2PAdsPanel } from './P2PAdsPanel';
 import { P2POrdersPanel } from './P2POrdersPanel';
 import { AutoTradePanel } from './AutoTradePanel';
@@ -45,7 +46,8 @@ export function Dashboard() {
 
 const TABS = [
   { id: 'home', label: 'Home', hint: 'Your wallet & account' },
-  { id: 'market', label: 'Market', hint: 'Exchange, P2P & auto-sell' },
+  { id: 'market', label: 'Market', hint: 'Exchange & transfer' },
+  { id: 'p2p', label: 'P2P', hint: 'Trade with people & auto-sell' },
   { id: 'exchange', label: 'Exchanger', hint: 'Buy & sell · BestChange' },
   { id: 'compare', label: 'Compare', hint: 'Sort by price' },
 ] as const;
@@ -129,6 +131,11 @@ function Tabs() {
           <MarketTab />
         </div>
       )}
+      {visited.has('p2p') && (
+        <div role="tabpanel" hidden={active !== 'p2p'}>
+          <P2PTab />
+        </div>
+      )}
       {visited.has('exchange') && (
         <div role="tabpanel" hidden={active !== 'exchange'}>
           <ExchangePanel />
@@ -169,12 +176,25 @@ type HomeSectionId = (typeof HOME_SECTIONS)[number]['id'];
 const MARKET_SECTIONS = [
   {
     id: 'swap',
-    label: 'Exchange SOL',
-    title: 'Exchange SOL and USDT',
+    label: 'Exchange',
+    title: 'Exchange one coin for another',
     about:
-      'Swap between SOL and USDT on your own Binance account. USDT is a digital dollar: 1 USDT is worth about 1 US dollar.',
+      'Swap between any two coins Binance supports, on your own Binance account. Nothing leaves Binance, and nothing moves on the blockchain.',
     steps: [],
   },
+  {
+    id: 'transfer',
+    label: 'Transfer',
+    title: 'Move coins between Binance and your wallet',
+    about:
+      'Everything that crosses between your Phantom wallet and Binance. Exchanging inside Binance is instant; moving on-chain takes a minute or two and costs a network fee.',
+    steps: [],
+  },
+] as const;
+
+type MarketSectionId = (typeof MARKET_SECTIONS)[number]['id'];
+
+const P2P_SECTIONS = [
   {
     id: 'people',
     label: 'Trade with people',
@@ -200,7 +220,7 @@ const MARKET_SECTIONS = [
   },
 ] as const;
 
-type MarketSectionId = (typeof MARKET_SECTIONS)[number]['id'];
+type P2PSectionId = (typeof P2P_SECTIONS)[number]['id'];
 
 /** The hash is `#tab/section`; this reads the section for one tab. */
 function sectionFromHash<T extends string>(
@@ -336,7 +356,7 @@ function HomeTab() {
   );
 }
 
-/** Everything that moves money: exchange, P2P and auto-sell. */
+/** Exchanging inside Binance, and moving coins in or out of it. */
 function MarketTab() {
   const [active, select] = useHashSection('market', MARKET_SECTIONS, 'swap');
 
@@ -349,11 +369,31 @@ function MarketTab() {
         onSelect={(id) => select(id as MarketSectionId)}
       />
 
-      {/* Every section stays mounted, only hidden: Sell and Buy hold a live
-          price that a section switch must not throw away. */}
-      <div hidden={active !== 'swap'}>
-        <ExchangeSol />
+      {/* Both sections stay mounted, only hidden: each holds a live quote that
+          expires in seconds, and switching must not discard one. */}
+      <div hidden={active !== 'swap'} className="mx-auto max-w-2xl">
+        <ConvertPanel />
       </div>
+      <div hidden={active !== 'transfer'}>
+        <TransferSection onOpenExchange={() => select('swap')} />
+      </div>
+    </>
+  );
+}
+
+/** Trading with people, and the robot that does it at a set price. */
+function P2PTab() {
+  const [active, select] = useHashSection('p2p', P2P_SECTIONS, 'people');
+
+  return (
+    <>
+      <SectionChrome
+        label="P2P sections"
+        sections={P2P_SECTIONS}
+        active={active}
+        onSelect={(id) => select(id as P2PSectionId)}
+      />
+
       <div hidden={active !== 'people'} className="grid items-start gap-5 lg:grid-cols-2">
         <P2PAdsPanel />
         <P2POrdersPanel />
@@ -365,58 +405,119 @@ function MarketTab() {
   );
 }
 
-const DIRECTIONS = [
-  { id: 'sell', label: 'Sell SOL', flow: 'SOL → USDT' },
-  { id: 'buy', label: 'Buy SOL', flow: 'USDT → SOL' },
+const MOVES = [
+  {
+    id: 'sell',
+    label: 'Sell SOL',
+    flow: 'Phantom → Binance → USDT',
+    about: 'Send SOL from your wallet to Binance and turn it into USDT.',
+  },
+  {
+    id: 'buy',
+    label: 'Buy SOL',
+    flow: 'USDT → Solana → Phantom',
+    about: 'Spend USDT already on Binance to get SOL, optionally withdrawn to your wallet.',
+  },
+  {
+    id: 'toSol',
+    label: 'Any coin → SOL',
+    flow: 'any coin → Solana → Phantom',
+    about: 'Turn any coin you hold on Binance into SOL, then withdraw it to your wallet.',
+  },
 ] as const;
 
-type Direction = (typeof DIRECTIONS)[number]['id'];
+type MoveId = (typeof MOVES)[number]['id'];
 
 /**
- * Sell and Buy as one place with a direction switch, rather than two sections.
+ * The three ways coins cross between Binance and the wallet.
  *
- * Both panels stay mounted: each holds a live quote that expires in seconds,
- * and flipping direction must not discard one the user is deciding on.
+ * All panels stay mounted: each holds a quote that expires in seconds, and
+ * switching between moves must not discard one mid-decision.
  */
-function ExchangeSol() {
-  const [direction, setDirection] = useState<Direction>('sell');
+function TransferSection({ onOpenExchange }: { onOpenExchange: () => void }) {
+  const [move, setMove] = useState<MoveId>('sell');
+  const current = MOVES.find((m) => m.id === move) ?? MOVES[0];
 
   return (
     <div className="mx-auto max-w-2xl">
       <div
         role="tablist"
-        aria-label="Exchange direction"
-        className="mb-4 flex gap-1 rounded-lg border border-border bg-surface p-1"
+        aria-label="What to move"
+        className="mb-3 flex gap-1 rounded-lg border border-border bg-surface p-1"
       >
-        {DIRECTIONS.map((d) => (
+        {MOVES.map((m) => (
           <button
-            key={d.id}
+            key={m.id}
             type="button"
             role="tab"
-            aria-selected={direction === d.id}
-            onClick={() => setDirection(d.id)}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition ${
-              direction === d.id
+            aria-selected={move === m.id}
+            onClick={() => setMove(m.id)}
+            className={`flex flex-1 flex-col items-center rounded-md px-2 py-2 text-center transition ${
+              move === m.id
                 ? 'bg-accent text-accent-fg'
                 : 'text-muted hover:bg-surface-subtle hover:text-foreground'
             }`}
           >
-            {d.label}
+            <span className="text-sm font-medium">{m.label}</span>
             <span
-              className={`text-[11px] ${direction === d.id ? 'text-accent-fg/80' : 'text-faint'}`}
+              className={`text-[10px] leading-tight ${move === m.id ? 'text-accent-fg/80' : 'text-faint'}`}
             >
-              {d.flow}
+              {m.flow}
             </span>
           </button>
         ))}
       </div>
 
-      <div hidden={direction !== 'sell'}>
+      <p className="mb-4 text-xs leading-relaxed text-muted">{current.about}</p>
+
+      <div hidden={move !== 'sell'}>
         <TransferPanel />
       </div>
-      <div hidden={direction !== 'buy'}>
+      <div hidden={move !== 'buy'}>
         <BuyPanel />
       </div>
+      <div hidden={move !== 'toSol'}>
+        <AnyCoinToSol onOpenExchange={onOpenExchange} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Any coin -> SOL -> Phantom.
+ *
+ * Presented as the two steps it actually is, rather than one button. The Buy
+ * flow's withdrawal leg is tied to a BuyFlow record and keyed to USDT in both
+ * its route and its schema, so no single backend call converts an arbitrary
+ * coin and withdraws in one transaction. Rather than fake a pipeline the
+ * server cannot run, this routes to the two steps that do work.
+ *
+ * It deliberately does not mount its own ConvertPanel: a second instance would
+ * repeat the ~430-asset load and hold a separate quote.
+ */
+function AnyCoinToSol({ onOpenExchange }: { onOpenExchange: () => void }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface-subtle px-4 py-4">
+      <ol className="grid gap-2.5">
+        {[
+          'In Exchange, pick the coin you hold and SOL as the target, check the price and confirm. The SOL lands on your Binance account.',
+          'Come back here to Buy SOL and withdraw it to Phantom. With auto-withdraw on (Home → My account) that happens for you.',
+        ].map((step, index) => (
+          <li key={step} className="flex gap-2.5 text-xs leading-relaxed text-muted">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-fg">
+              {index + 1}
+            </span>
+            <span>{step}</span>
+          </li>
+        ))}
+      </ol>
+      <button
+        type="button"
+        onClick={onOpenExchange}
+        className="mt-3.5 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-accent-fg transition hover:brightness-110"
+      >
+        Open Exchange
+      </button>
     </div>
   );
 }
