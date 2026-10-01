@@ -130,12 +130,31 @@ export interface SendResult {
   signature: string;
 }
 
+/**
+ * How the signed transaction reaches the network.
+ *
+ * `signTransaction` is preferred when the wallet offers it. The adapter's
+ * combined `sendTransaction` makes the WALLET submit, using the Connection we
+ * hand it -- and that Connection points at this app's own /api/solana/rpc
+ * proxy, which only exists inside the page. Phantom's extension context cannot
+ * use it, so its submit fails with a generic "Unexpected error" even though the
+ * transaction itself is valid.
+ *
+ * Signing locally and submitting ourselves keeps the network call on the side
+ * that can actually reach the proxy. The wallet still signs, so the private key
+ * never leaves it.
+ */
+export interface Signer {
+  signTransaction?: (transaction: Transaction) => Promise<Transaction>;
+  sendTransaction: WalletAdapterProps['sendTransaction'];
+}
+
 export async function sendSolTransfer(
   connection: Connection,
   from: PublicKey,
   toAddress: string,
   amountSol: string,
-  sendTransaction: WalletAdapterProps['sendTransaction'],
+  signer: Signer,
 ): Promise<SendResult> {
   const to = new PublicKey(toAddress);
   const lamports = solStringToLamports(amountSol);
@@ -160,7 +179,20 @@ export async function sendSolTransfer(
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = from;
 
-  const signature = await sendTransaction(transaction, connection);
+  let signature: string;
+  if (signer.signTransaction) {
+    const signed = await signer.signTransaction(transaction);
+    signature = await connection.sendRawTransaction(signed.serialize(), {
+      // The transaction was simulated by the wallet already; skipping
+      // preflight avoids a second round trip that can fail on a node whose
+      // view of the blockhash lags.
+      skipPreflight: false,
+      preflightCommitment: 'confirmed',
+    });
+  } else {
+    // Wallets without signTransaction (rare) must submit themselves.
+    signature = await signer.sendTransaction(transaction, connection);
+  }
 
   // Wait for confirmation rather than returning on broadcast: a transaction
   // can be dropped after submission, and reporting success then would be wrong.

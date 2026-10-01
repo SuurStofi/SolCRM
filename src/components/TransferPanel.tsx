@@ -25,7 +25,13 @@ import {
   EmptyRow,
   ExtLink,
   RefreshButton,
+  ShowMore,
+  useSecondsLeft,
 } from './ui';
+import { useAuth } from './AuthProvider';
+
+/** Runs shown before the list has to be expanded. */
+const FLOW_PREVIEW = 6;
 
 interface FlowEvent {
   id: string;
@@ -57,6 +63,17 @@ interface Quote {
   toAmount: string;
   fromAmount: string;
   validTimestamp: number;
+  validForMs: number;
+}
+
+interface ActiveQuote {
+  flowId: string;
+  quote: Quote;
+  /**
+   * Browser-clock deadline, derived from the lifetime the server measured
+   * against Binance's clock rather than from Binance's absolute timestamp.
+   */
+  expiresAt: number;
 }
 
 async function api<T>(url: string, body?: unknown, method = 'POST'): Promise<T> {
@@ -72,14 +89,20 @@ async function api<T>(url: string, body?: unknown, method = 'POST'): Promise<T> 
 
 export function TransferPanel() {
   const { connection } = useConnection();
-  const { publicKey, connected, sendTransaction } = useWallet();
+  const { publicKey, connected, sendTransaction, signTransaction } = useWallet();
+  const { account, connectedWalletLinked } = useAuth();
+  const hasBinanceKey = Boolean(account?.binance);
+  // Runs are recorded against the account, so only a wallet proven to belong
+  // to it may send. The server enforces this too; this just says so early.
+  const canSend = connected && connectedWalletLinked && hasBinanceKey;
 
   const [flows, setFlows] = useState<Flow[]>([]);
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [quote, setQuote] = useState<{ flowId: string; quote: Quote } | null>(null);
+  const [quote, setQuote] = useState<ActiveQuote | null>(null);
   const [fees, setFees] = useState<FeeBreakdown | null>(null);
+  const [showAllFlows, setShowAllFlows] = useState(false);
 
   const loadFees = useCallback(async () => {
     if (!publicKey) {
@@ -130,20 +153,29 @@ export function TransferPanel() {
     setBusy('transfer');
     setError(null);
     let flowId: string | null = null;
+    let signature: string | null = null;
     try {
-      const { flow } = await api<{ flow: Flow }>('/api/flow/create', { amountSol: amount });
+      const { flow } = await api<{ flow: Flow }>('/api/flow/create', {
+        amountSol: amount,
+        fromAddress: publicKey.toBase58(),
+      });
       flowId = flow.id;
       await refresh();
 
       if (!flow.depositAddress) throw new Error('No deposit address returned.');
 
-      const { signature } = await sendSolTransfer(
+      // Recorded before the wallet opens so the run reads as awaiting a
+      // signature rather than as an untouched draft while Phantom waits.
+      await api('/api/flow/submitted', { id: flow.id, signing: true });
+      await refresh();
+
+      ({ signature } = await sendSolTransfer(
         connection,
         publicKey,
         flow.depositAddress,
         amount,
-        sendTransaction,
-      );
+        { signTransaction, sendTransaction },
+      ));
 
       await api('/api/flow/submitted', { id: flow.id, signature });
       // Chain confirmation already happened inside sendSolTransfer.
@@ -155,17 +187,21 @@ export function TransferPanel() {
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Transfer failed.';
       setError(message);
-      // Record the failure so the flow does not sit in a misleading state.
+      // The signature decides how this is recorded: holding one means the SOL
+      // has already left the wallet, so the run must not be marked failed.
       if (flowId) {
-        await api('/api/flow/submitted', { id: flowId, failed: true }).catch(
-          () => undefined,
-        );
+        await api('/api/flow/submitted', {
+          id: flowId,
+          failed: true,
+          signature,
+          error: message,
+        }).catch(() => undefined);
         await refresh();
       }
     } finally {
       setBusy(null);
     }
-  }, [amount, connection, publicKey, sendTransaction, refresh, loadFees]);
+  }, [amount, connection, publicKey, sendTransaction, signTransaction, refresh, loadFees]);
 
   const checkCredit = useCallback(
     async (flowId: string) => {
@@ -176,7 +212,7 @@ export function TransferPanel() {
           id: flowId,
         });
         if (!result.credited) {
-          setError('Binance has not credited this deposit yet. Credit can lag by several minutes.');
+          setError('Not on Binance yet. It can take a few minutes — try again shortly.');
         }
         await refresh();
       } catch (cause) {
@@ -197,7 +233,11 @@ export function TransferPanel() {
           id: flowId,
           action: 'quote',
         });
-        setQuote({ flowId, quote: result.quote });
+        setQuote({
+          flowId,
+          quote: result.quote,
+          expiresAt: Date.now() + result.quote.validForMs,
+        });
         await refresh();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Could not get a quote.');
@@ -228,8 +268,8 @@ export function TransferPanel() {
 
   return (
     <Panel
-      title="Transfer & Convert"
-      subtitle="SOL → Binance → USDT"
+      title="Sell SOL"
+      subtitle="Your wallet → Binance → USDT"
       icon={<ArrowsMark />}
       action={
         <RefreshButton
@@ -247,12 +287,12 @@ export function TransferPanel() {
             trailing={
               fees && (
                 <span className="tabular text-[11px] text-faint">
-                  balance {formatSol(fees.balanceLamports)} SOL
+                  in wallet: {formatSol(fees.balanceLamports)} SOL
                 </span>
               )
             }
           >
-            Send SOL to Binance
+            How much SOL to sell
           </SectionLabel>
 
           <div className="flex gap-2">
@@ -266,14 +306,14 @@ export function TransferPanel() {
                 onChange={(event) => setAmount(event.target.value)}
                 inputMode="decimal"
                 placeholder="0.00"
-                disabled={!connected || busy !== null}
+                disabled={!canSend || busy !== null}
                 className="tabular w-full bg-transparent py-2 text-sm outline-none placeholder:text-faint disabled:opacity-50"
               />
               <span className="mr-2 text-xs font-medium text-faint">SOL</span>
               <button
                 type="button"
                 onClick={() => fees && setAmount(formatSol(fees.maxSendableLamports))}
-                disabled={!connected || busy !== null || !fees || nothingSendable}
+                disabled={!canSend || busy !== null || !fees || nothingSendable}
                 className="shrink-0 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted transition hover:border-border-strong hover:text-foreground disabled:opacity-40"
               >
                 Max
@@ -283,7 +323,7 @@ export function TransferPanel() {
               type="button"
               onClick={startTransfer}
               disabled={
-                !connected ||
+                !canSend ||
                 busy !== null ||
                 !amount ||
                 amountInvalid ||
@@ -293,7 +333,7 @@ export function TransferPanel() {
               className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {busy === 'transfer' && <Spinner className="border-t-accent-fg" />}
-              Send
+              <span>Send to Binance</span>
             </button>
           </div>
 
@@ -302,19 +342,19 @@ export function TransferPanel() {
           {fees && (
             <div className="mt-2 space-y-1">
               <div className="flex items-center justify-between text-[11px]">
-                <span className="text-faint">Network fee</span>
+                <span className="text-faint">Network fee (paid to Solana)</span>
                 <span className="tabular text-muted">
                   {formatSol(fees.feeLamports)} SOL
                 </span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
-                <span className="text-faint">Rent-exempt minimum kept</span>
+                <span className="text-faint">Must stay in the wallet (Solana rule)</span>
                 <span className="tabular text-muted">
                   {formatSol(fees.rentExemptLamports)} SOL
                 </span>
               </div>
               <div className="flex items-center justify-between border-t border-border/60 pt-1 text-[11px]">
-                <span className="font-medium text-muted">Max sendable</span>
+                <span className="font-medium text-muted">Most you can send</span>
                 <span className="tabular font-medium">
                   {formatSol(fees.maxSendableLamports)} SOL
                 </span>
@@ -327,7 +367,7 @@ export function TransferPanel() {
             <p className="mt-2 text-[11px] leading-relaxed text-bad">
               Not enough SOL to send. The wallet holds{' '}
               {fees && formatSol(fees.balanceLamports)} SOL, which does not cover the
-              network fee plus the rent-exempt minimum.
+              network fee plus the amount that must stay in the wallet.
             </p>
           ) : amountInvalid ? (
             <p className="mt-2 text-[11px] text-bad">Enter a valid amount.</p>
@@ -338,26 +378,30 @@ export function TransferPanel() {
             </p>
           ) : (
             <p className="mt-2 text-[11px] leading-relaxed text-faint">
-              {connected
-                ? 'You approve the transaction in your wallet.'
-                : 'Connect your wallet to send.'}
+              {!connected
+                ? 'Connect your wallet first (see the steps at the top).'
+                : !connectedWalletLinked
+                  ? 'This wallet is not added to your account yet — add it in My account.'
+                  : !hasBinanceKey
+                    ? 'Connect your Binance account first (My account) — the SOL goes to your own Binance.'
+                    : 'Your wallet will ask you to approve. Nothing is exchanged until you confirm the price in the next step.'}
             </p>
           )}
         </div>
 
         {/* History */}
         <div>
-          <SectionLabel>Recent runs</SectionLabel>
+          <SectionLabel>Your sales</SectionLabel>
           {flows.length === 0 ? (
-            <EmptyRow>No transfers yet</EmptyRow>
+            <EmptyRow>No sales yet</EmptyRow>
           ) : (
             <ul className="space-y-2.5">
-              {flows.slice(0, 6).map((flow) => (
+              {(showAllFlows ? flows : flows.slice(0, FLOW_PREVIEW)).map((flow) => (
                 <FlowCard
                   key={flow.id}
                   flow={flow}
                   busy={busy === flow.id}
-                  quote={quote?.flowId === flow.id ? quote.quote : null}
+                  quote={quote?.flowId === flow.id ? quote : null}
                   onCheckCredit={() => checkCredit(flow.id)}
                   onQuote={() => requestQuote(flow.id)}
                   onAccept={(quoteId) => acceptQuote(flow.id, quoteId)}
@@ -366,6 +410,12 @@ export function TransferPanel() {
               ))}
             </ul>
           )}
+          <ShowMore
+            expanded={showAllFlows}
+            total={flows.length}
+            previewCount={FLOW_PREVIEW}
+            onToggle={() => setShowAllFlows((current) => !current)}
+          />
         </div>
       </div>
     </Panel>
@@ -398,7 +448,7 @@ function FlowCard({
 }: {
   flow: Flow;
   busy: boolean;
-  quote: Quote | null;
+  quote: ActiveQuote | null;
   onCheckCredit: () => void;
   onQuote: () => void;
   onAccept: (quoteId: string) => void;
@@ -406,6 +456,8 @@ function FlowCard({
 }) {
   const failed = isFailure(flow.state);
   const resume = resumeAction(flow.state);
+  const secondsLeft = useSecondsLeft(quote?.expiresAt ?? null);
+  const expired = quote !== null && secondsLeft <= 0;
 
   return (
     <li className="rounded-lg border border-border bg-surface-subtle px-3.5 py-3">
@@ -436,11 +488,11 @@ function FlowCard({
       {/* On-chain and Binance credit shown separately: credit lags the chain,
           and conflating them would imply funds are tradeable before they are. */}
       <div className="mt-2.5 flex flex-wrap gap-1.5">
-        <StepChip done={!!flow.chainConfirmedAt} label="on-chain" />
-        <StepChip done={!!flow.binanceCreditedAt} label="credited" />
-        <StepChip done={!!flow.usdtReceived} label="converted" />
+        <StepChip done={!!flow.chainConfirmedAt} label="1 · sent" />
+        <StepChip done={!!flow.binanceCreditedAt} label="2 · on Binance" />
+        <StepChip done={!!flow.usdtReceived} label="3 · exchanged" />
         {flow.usdtReceived && (
-          <Chip tone="good">{flow.usdtReceived} USDT</Chip>
+          <Chip tone="good">you got {flow.usdtReceived} USDT</Chip>
         )}
       </div>
 
@@ -452,23 +504,29 @@ function FlowCard({
           triggered by the same click that fetched the rate. */}
       {quote && (
         <div className="mt-3 rounded-lg border border-accent/30 bg-accent/5 px-3 py-2.5">
-          <p className="text-xs">
-            <span className="font-semibold">{quote.fromAmount} SOL</span> →{' '}
-            <span className="font-semibold">{quote.toAmount} USDT</span>
-            <span className="ml-1.5 text-faint">@ {quote.ratio}</span>
-          </p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs">
+              You give <span className="font-semibold">{quote.quote.fromAmount} SOL</span>, you
+              get <span className="font-semibold">{quote.quote.toAmount} USDT</span>
+            </p>
+            <Chip tone={expired ? 'bad' : secondsLeft <= 10 ? 'warn' : 'accent'}>
+              {expired ? 'price expired' : `price holds ${secondsLeft}s`}
+            </Chip>
+          </div>
           <p className="mt-1 text-[11px] text-faint">
-            This executes immediately and cannot be undone.
+            {expired
+              ? 'This price is no longer valid. Get a new one to continue.'
+              : `1 SOL = ${quote.quote.ratio} USDT. Happens right away and cannot be undone.`}
           </p>
           <div className="mt-2 flex gap-2">
             <button
               type="button"
-              onClick={() => onAccept(quote.quoteId)}
+              onClick={expired ? onQuote : () => onAccept(quote.quote.quoteId)}
               disabled={busy}
               className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {busy && <Spinner className="border-t-accent-fg" />}
-              Confirm convert
+              <span>{expired ? 'Get new price' : 'Confirm and exchange'}</span>
             </button>
             <button
               type="button"
@@ -495,7 +553,7 @@ function FlowCard({
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:border-border-strong disabled:opacity-40"
           >
             {busy && <Spinner />}
-            {resume}
+            <span>{resume}</span>
           </button>
         </div>
       )}
