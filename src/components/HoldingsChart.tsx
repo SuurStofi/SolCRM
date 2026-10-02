@@ -3,11 +3,12 @@
 import { useState, useSyncExternalStore, type ReactNode } from 'react';
 
 /**
- * Portfolio composition as a horizontal stacked bar.
+ * Portfolio composition as a donut.
  *
- * Part-to-whole with a handful of named categories, so a stacked bar rather
- * than a pie: shares are read along one axis instead of by arc angle, and
- * horizontal gives long ticker names room.
+ * Part-to-whole at a glance with at most six segments, which is the case a
+ * donut is for. Close values are the thing an arc reads badly, so the legend
+ * carries the exact percentage for every slice -- the ring gives the shape,
+ * the legend gives the numbers.
  */
 
 export interface Holding {
@@ -38,6 +39,21 @@ const OTHER_LIGHT = '#8d9099';
 const OTHER_DARK = '#6b6e77';
 
 const MAX_SLICES = SERIES_LIGHT.length;
+
+// Geometry. The ring is thin by the same logic as every other mark here.
+const SIZE = 132;
+const RADIUS = 52;
+const THICKNESS = 14;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+/** Separation is a gap in the surface colour, not a stroke around each arc. */
+const GAP = 2;
+
+/**
+ * Smallest arc a slice may render as. A holding worth 0.00001% would otherwise
+ * round to nothing and read as absent rather than tiny.
+ */
+const MIN_ARC = 3;
 
 /**
  * Tracks the rendered theme, since dark is its own validated step set rather
@@ -113,6 +129,22 @@ export function HoldingsChart({
   const colorAt = (index: number) =>
     folded && index === MAX_SLICES - 1 ? other : palette[index];
 
+  // Arc lengths in circumference units, so the gap is in the same units. The
+  // offset is the running sum of the slices before this one.
+  const arcs = slices.map((slice, index) => {
+    const share = slice.value / total;
+    const offset =
+      slices.slice(0, index).reduce((sum, s) => sum + s.value, 0) / total * CIRCUMFERENCE;
+    return {
+      dash: Math.max(MIN_ARC, share * CIRCUMFERENCE - GAP),
+      offset,
+      share: share * 100,
+    };
+  });
+
+  const leader = slices.length > 0 ? arcs[hovered ?? 0] : null;
+  const leaderSlice = slices.length > 0 ? slices[hovered ?? 0] : null;
+
   return (
     <section className="rounded-xl border border-border bg-surface p-5 shadow-[var(--shadow-card)]">
       <header className="mb-4 flex items-start justify-between gap-3">
@@ -126,8 +158,7 @@ export function HoldingsChart({
       {total <= 0 ? (
         <p className="py-8 text-sm text-faint">{empty}</p>
       ) : slices.length === 1 ? (
-        /* One holding is not a part-to-whole story, and a single-segment
-           stacked bar is a one-bar chart. The number is the chart. */
+        /* One holding is not a part-to-whole story. The number is the chart. */
         <div className="py-2">
           <div className="flex items-baseline gap-2">
             <span className="tabular text-[1.75rem] font-semibold leading-none tracking-tight">
@@ -140,63 +171,87 @@ export function HoldingsChart({
           </p>
         </div>
       ) : (
-        <>
-          {/* Segments are separated by a 2px gap in the surface colour rather
-              than a stroke, so no segment gains a visual border. */}
-          <div
-            className="flex h-7 w-full gap-[2px]"
-            role="img"
-            aria-label={`${title}: ${slices
-              .map((s) => `${s.label} ${((s.value / total) * 100).toFixed(1)} percent`)
-              .join(', ')}`}
-          >
-            {slices.map((slice, index) => (
-              <div
-                key={slice.label}
-                onMouseEnter={() => setHovered(index)}
-                onMouseLeave={() => setHovered(null)}
-                title={`${slice.label} · ${slice.display} · ${((slice.value / total) * 100).toFixed(1)}%`}
-                style={{
-                  width: `${(slice.value / total) * 100}%`,
-                  background: colorAt(index),
-                }}
-                className={`h-full min-w-[3px] transition-opacity first:rounded-l last:rounded-r ${
-                  hovered !== null && hovered !== index ? 'opacity-40' : ''
-                }`}
-              />
-            ))}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
+          <div className="relative shrink-0">
+            <svg
+              width={SIZE}
+              height={SIZE}
+              viewBox={`0 0 ${SIZE} ${SIZE}`}
+              role="img"
+              aria-label={`${title}: ${slices
+                .map((s, i) => `${s.label} ${arcs[i].share.toFixed(1)} percent`)
+                .join(', ')}`}
+            >
+              {/* Rotated so the first slice starts at twelve o'clock, which is
+                  where a reader looks first. */}
+              <g transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}>
+                {arcs.map((arc, index) => (
+                  <circle
+                    key={slices[index].label}
+                    cx={SIZE / 2}
+                    cy={SIZE / 2}
+                    r={RADIUS}
+                    fill="none"
+                    stroke={colorAt(index)}
+                    strokeWidth={THICKNESS}
+                    // Arc length then the rest of the ring as empty space; the
+                    // offset walks each slice around the circle.
+                    strokeDasharray={`${arc.dash} ${CIRCUMFERENCE - arc.dash}`}
+                    strokeDashoffset={-arc.offset}
+                    onMouseEnter={() => setHovered(index)}
+                    onMouseLeave={() => setHovered(null)}
+                    className={`cursor-default transition-opacity ${
+                      hovered !== null && hovered !== index ? 'opacity-40' : ''
+                    }`}
+                  >
+                    <title>{`${slices[index].label} · ${slices[index].display} · ${arc.share.toFixed(1)}%`}</title>
+                  </circle>
+                ))}
+              </g>
+            </svg>
+
+            {/* The hole carries the hovered slice, so the ring is readable
+                without a floating tooltip. Defaults to the largest holding. */}
+            {leader && leaderSlice && (
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                <span className="tabular text-base font-semibold leading-none">
+                  {leader.share < 0.1 ? '<0.1' : leader.share.toFixed(1)}%
+                </span>
+                <span className="mt-0.5 max-w-[72px] truncate text-[10px] leading-tight text-muted">
+                  {leaderSlice.label}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* The legend is always present and labels every series, which is the
-              relief the light-mode contrast WARN requires. */}
-          <ul className="mt-3.5 grid gap-x-5 gap-y-1.5 sm:grid-cols-2">
-            {slices.map((slice, index) => {
-              const share = (slice.value / total) * 100;
-              return (
-                <li
-                  key={slice.label}
-                  onMouseEnter={() => setHovered(index)}
-                  onMouseLeave={() => setHovered(null)}
-                  className={`flex items-baseline gap-2 text-xs transition-opacity ${
-                    hovered !== null && hovered !== index ? 'opacity-50' : ''
-                  }`}
-                >
-                  <span
-                    aria-hidden="true"
-                    style={{ background: colorAt(index) }}
-                    className="relative top-[2px] h-2.5 w-2.5 shrink-0 rounded-sm"
-                  />
-                  {/* Text keeps its own ink tokens; the swatch carries identity. */}
-                  <span className="min-w-0 flex-1 truncate font-medium">{slice.label}</span>
-                  <span className="tabular shrink-0 text-muted">{slice.display}</span>
-                  <span className="tabular w-11 shrink-0 text-right text-faint">
-                    {share < 0.1 ? '<0.1%' : `${share.toFixed(1)}%`}
-                  </span>
-                </li>
-              );
-            })}
+              relief the light-mode contrast WARN requires -- and it carries the
+              exact percentages an arc cannot convey for close values. */}
+          <ul className="min-w-[160px] flex-1 grid gap-1.5">
+            {slices.map((slice, index) => (
+              <li
+                key={slice.label}
+                onMouseEnter={() => setHovered(index)}
+                onMouseLeave={() => setHovered(null)}
+                className={`flex items-baseline gap-2 text-xs transition-opacity ${
+                  hovered !== null && hovered !== index ? 'opacity-50' : ''
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{ background: colorAt(index) }}
+                  className="relative top-[2px] h-2.5 w-2.5 shrink-0 rounded-sm"
+                />
+                {/* Text keeps its own ink tokens; the swatch carries identity. */}
+                <span className="min-w-0 flex-1 truncate font-medium">{slice.label}</span>
+                <span className="tabular shrink-0 text-muted">{slice.display}</span>
+                <span className="tabular w-11 shrink-0 text-right text-faint">
+                  {arcs[index].share < 0.1 ? '<0.1%' : `${arcs[index].share.toFixed(1)}%`}
+                </span>
+              </li>
+            ))}
           </ul>
-        </>
+        </div>
       )}
     </section>
   );
