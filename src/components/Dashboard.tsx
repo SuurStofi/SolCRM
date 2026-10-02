@@ -11,6 +11,7 @@ import { BinancePanel } from './BinancePanel';
 import { TransferPanel } from './TransferPanel';
 import { BuyPanel } from './BuyPanel';
 import { ConvertPanel } from './ConvertPanel';
+import { HoldingsCharts } from './HoldingsCharts';
 import { P2PAdsPanel } from './P2PAdsPanel';
 import { P2POrdersPanel } from './P2POrdersPanel';
 import { AutoTradePanel } from './AutoTradePanel';
@@ -345,9 +346,12 @@ function HomeTab() {
         onSelect={(id) => select(id as HomeSectionId)}
       />
 
-      <div hidden={active !== 'wallet'} className="grid items-start gap-5 lg:grid-cols-2">
-        <WalletPanel />
-        <BinancePanel />
+      <div hidden={active !== 'wallet'}>
+        <HoldingsCharts />
+        <div className="grid items-start gap-5 lg:grid-cols-2">
+          <WalletPanel />
+          <BinancePanel />
+        </div>
       </div>
       <div hidden={active !== 'account'} className="mx-auto max-w-2xl">
         <AccountPanel />

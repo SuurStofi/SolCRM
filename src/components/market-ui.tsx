@@ -78,6 +78,37 @@ export function Field({
 }
 
 /** Two-to-four way toggle, e.g. Sell / Buy. */
+/**
+ * A titled group of related controls.
+ *
+ * The Dealer filters were five equal-weight fields in two unlabelled rows,
+ * which gave no hint that "I want to" and "Crypto" decide WHAT is traded while
+ * the rest only narrow the results. Grouping them says that without a tooltip.
+ */
+export function FilterGroup({
+  title,
+  hint,
+  children,
+  className = '',
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <fieldset
+      className={`rounded-xl border border-border bg-surface-subtle px-3.5 pb-3 pt-2.5 ${className}`}
+    >
+      <legend className="flex items-baseline gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+        {title}
+        {hint && <span className="font-normal normal-case tracking-normal text-faint">{hint}</span>}
+      </legend>
+      {children}
+    </fieldset>
+  );
+}
+
 export function Segmented<T extends string>({
   value,
   options,

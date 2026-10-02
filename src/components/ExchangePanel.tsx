@@ -16,6 +16,7 @@ import {
   cryptoLabel,
   fetchJson,
   Field,
+  FilterGroup,
   inputClass,
   money,
   onMount,
@@ -196,50 +197,67 @@ export function ExchangePanel() {
           <SetupNote />
         ) : (
           <>
-            <div className="flex flex-wrap items-end gap-3">
-              <SideAndCrypto
-                side={side}
-                crypto={crypto}
-                onSide={(next) => {
-                  setSide(next);
-                  setRails(null);
-                }}
-                onCrypto={(next) => {
-                  setCrypto(next);
-                  setRails(null);
-                }}
-              />
-            </div>
+            {/* Two groups rather than five flat fields: the first decides what
+                is being traded and reloads the rails, the second only narrows
+                the list that comes back. */}
+            <div className="grid gap-3 lg:grid-cols-[auto_1fr]">
+              <FilterGroup title="Trade">
+                <div className="flex flex-wrap items-end gap-3">
+                  <SideAndCrypto
+                    side={side}
+                    crypto={crypto}
+                    onSide={(next) => {
+                      setSide(next);
+                      setRails(null);
+                    }}
+                    onCrypto={(next) => {
+                      setCrypto(next);
+                      setRails(null);
+                    }}
+                  />
+                </div>
+              </FilterGroup>
 
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <Field label="Search">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="PayPal, Sberbank, card…"
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Currency">
-                <select value={fiat} onChange={(e) => setFiat(e.target.value)} className={inputClass}>
-                  <option value="">Any currency</option>
-                  {fiats.map((f) => (
-                    <option key={f} value={f}>
-                      {f}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Type">
-                <select value={group} onChange={(e) => setGroup(e.target.value)} className={inputClass}>
-                  <option value="">E-money, banks and cards</option>
-                  {groups.map((g) => (
-                    <option key={g} value={g}>
-                      {g}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              <FilterGroup title="Narrow down" hint="optional">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <Field label="Search">
+                    <input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="PayPal, Sberbank, card…"
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="Currency">
+                    <select
+                      value={fiat}
+                      onChange={(e) => setFiat(e.target.value)}
+                      className={inputClass}
+                    >
+                      <option value="">Any currency</option>
+                      {fiats.map((f) => (
+                        <option key={f} value={f}>
+                          {f}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Type">
+                    <select
+                      value={group}
+                      onChange={(e) => setGroup(e.target.value)}
+                      className={inputClass}
+                    >
+                      <option value="">E-money, banks and cards</option>
+                      {groups.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+              </FilterGroup>
             </div>
 
             <div>

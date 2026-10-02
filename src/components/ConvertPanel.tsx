@@ -88,9 +88,23 @@ export function ConvertPanel() {
     };
   }, [load]);
 
+  /**
+   * Only coins with a spendable balance can be the source: offering all ~430
+   * assets implied the account could sell something it does not hold, and
+   * every such choice ended in a rejected quote.
+   */
+  const held = useMemo(() => assets.filter((a) => Number(a.free) > 0), [assets]);
+
+  // Fall back to the largest holding when the chosen source is not held, so
+  // the form opens on something that can actually be exchanged.
+  const effectiveFrom = useMemo(() => {
+    if (held.some((a) => a.asset === fromAsset)) return fromAsset;
+    return held[0]?.asset ?? fromAsset;
+  }, [held, fromAsset]);
+
   const from = useMemo(
-    () => assets.find((a) => a.asset === fromAsset) ?? null,
-    [assets, fromAsset],
+    () => assets.find((a) => a.asset === effectiveFrom) ?? null,
+    [assets, effectiveFrom],
   );
 
   // Only assets Binance can actually convert this one into. Offering the full
@@ -123,7 +137,7 @@ export function ConvertPanel() {
     try {
       const data = await api<{ quote: Quote }>('/api/convert/trade', {
         action: 'quote',
-        fromAsset,
+        fromAsset: effectiveFrom,
         toAsset: effectiveTo,
         amount: amount.trim(),
       });
@@ -180,13 +194,18 @@ export function ConvertPanel() {
           <div className="flex items-center gap-2 py-6 text-sm text-faint">
             <Spinner /> Loading assets…
           </div>
+        ) : held.length === 0 ? (
+          <EmptyRow>
+            No coins on your Binance spot account to exchange. Deposit something, or
+            move a balance out of Simple Earn first.
+          </EmptyRow>
         ) : (
           <>
             <div>
               <SectionLabel
                 trailing={
                   <span className="tabular text-[11px] text-faint">
-                    you have {free} {fromAsset}
+                    you have {free} {effectiveFrom}
                   </span>
                 }
               >
@@ -220,9 +239,8 @@ export function ConvertPanel() {
                 </div>
                 <AssetSelect
                   id="convert-from"
-                  value={fromAsset}
-                  options={assets.map((a) => a.asset)}
-                  balances={assets}
+                  value={effectiveFrom}
+                  options={held.map((a) => a.asset)}
                   disabled={busy}
                   onChange={(value) => {
                     setFromAsset(value);
@@ -257,7 +275,7 @@ export function ConvertPanel() {
 
             {overBalance && (
               <p className="text-[11px] text-bad">
-                Not enough {fromAsset}. You have {free}.
+                Not enough {effectiveFrom}. You have {free}.
               </p>
             )}
 
@@ -272,14 +290,14 @@ export function ConvertPanel() {
               >
                 <p className="text-xs">
                   <span className="font-semibold">
-                    {quote.fromAmount} {fromAsset}
+                    {quote.fromAmount} {effectiveFrom}
                   </span>{' '}
                   →{' '}
                   <span className="font-semibold">
                     {quote.toAmount} {effectiveTo}
                   </span>
                   <span className="ml-1.5 text-faint">
-                    1 {fromAsset} = {quote.ratio} {effectiveTo}
+                    1 {effectiveFrom} = {quote.ratio} {effectiveTo}
                   </span>
                 </p>
                 <div className="mt-2 flex items-center gap-2">
@@ -327,7 +345,7 @@ export function ConvertPanel() {
               <button
                 type="button"
                 onClick={getQuote}
-                disabled={busy || !amountValid || overBalance || fromAsset === effectiveTo}
+                disabled={busy || !amountValid || overBalance || effectiveFrom === effectiveTo}
                 className="inline-flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
               >
                 {busy && <Spinner className="border-t-accent-fg" />}
@@ -342,51 +360,36 @@ export function ConvertPanel() {
 }
 
 /**
- * Asset picker. A native select on purpose: the list runs to ~430 entries, and
- * the browser's own list is searchable by typing and works on mobile.
+ * Asset picker. A native select on purpose: the target list runs to ~400
+ * entries, and the browser's own list is searchable by typing and works on
+ * mobile without extra code.
  */
 function AssetSelect({
   id,
   value,
   options,
-  balances,
   disabled,
   onChange,
 }: {
   id: string;
   value: string;
   options: readonly string[];
-  balances?: ConvertibleAsset[];
   disabled?: boolean;
   onChange: (value: string) => void;
 }) {
-  const held = balances?.filter((a) => Number(a.free) > 0).map((a) => a.asset) ?? [];
-  const rest = options.filter((a) => !held.includes(a));
-
   return (
     <select
       id={id}
       value={value}
-      disabled={disabled}
+      disabled={disabled || options.length === 0}
       onChange={(event) => onChange(event.target.value)}
       className="shrink-0 rounded-lg border border-border bg-surface px-2.5 py-2 text-sm font-medium outline-none transition focus:border-accent disabled:opacity-50"
     >
-      {held.length > 0 && (
-        <optgroup label="You hold">
-          {held.map((asset) => (
-            <option key={asset} value={asset}>
-              {asset}
-            </option>
-          ))}
-        </optgroup>
-      )}
-      <optgroup label={held.length > 0 ? 'All assets' : 'Assets'}>
-        {rest.map((asset) => (
-          <option key={asset} value={asset}>
-            {asset}
-          </option>
-        ))}
-      </optgroup>
+      {options.map((asset) => (
+        <option key={asset} value={asset}>
+          {asset}
+        </option>
+      ))}
     </select>
   );
 }
