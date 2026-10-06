@@ -1,6 +1,4 @@
-import { WalletPanel } from '@/components/WalletPanel';
-import { BinancePanel } from '@/components/BinancePanel';
-import { TransferPanel } from '@/components/TransferPanel';
+import { Dashboard, AccountBadge } from '@/components/Dashboard';
 
 export default function DashboardPage() {
   return (
@@ -16,28 +14,19 @@ export default function DashboardPage() {
               <p className="text-[11px] text-faint">Wallet · Exchange · P2P</p>
             </div>
           </div>
-          <span className="rounded-md border border-border bg-surface-subtle px-2 py-1 text-[11px] font-medium text-muted">
-            Phase 2 · transfer & convert
-          </span>
+          <AccountBadge />
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-7">
-        <div className="grid items-start gap-5 lg:grid-cols-2">
-          <WalletPanel />
-          <BinancePanel />
-        </div>
-
-        <div className="mt-5">
-          <TransferPanel />
-        </div>
+        <Dashboard />
 
         <footer className="mt-10 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border pt-5 text-[11px] text-faint">
           <span className="flex items-center gap-1.5">
             <Dot /> Private key never leaves your wallet
           </span>
           <span className="flex items-center gap-1.5">
-            <Dot /> Binance credentials stay server-side
+            <Dot /> Binance keys encrypted, server-side only
           </span>
           <span className="flex items-center gap-1.5">
             <Dot /> Secrets scrubbed from all logs

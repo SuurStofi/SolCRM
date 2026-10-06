@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getRecentDeposits } from '@/lib/binance/account';
-import { handleRoute } from '@/lib/binance/route-helpers';
+import { userRoute } from '@/lib/auth/route';
 import { getFlow, transition } from '@/lib/flow/store';
 import type { FlowState } from '@/lib/flow/machine';
 
@@ -24,47 +24,53 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'Missing flow id.' }, { status: 400 });
   }
 
-  return handleRoute('POST /api/flow/check-credit', async () => {
-    const flow = await getFlow(id);
-    if (!flow) throw new Error('Flow not found');
-    if (!flow.txSignature) throw new Error('Flow has no transaction signature yet');
+  return userRoute(
+    request,
+    'POST /api/flow/check-credit',
+    async (user) => {
+      const flow = await getFlow(user.id, id);
+      if (!flow) throw new Error('Flow not found');
+      if (!flow.txSignature) throw new Error('Flow has no transaction signature yet');
 
-    const deposits = await getRecentDeposits('SOL');
-    const match = deposits.find(
-      (deposit) =>
-        typeof deposit.txId === 'string' &&
-        deposit.txId.includes(flow.txSignature as string),
-    );
+      const deposits = await getRecentDeposits('SOL');
+      const match = deposits.find(
+        (deposit) =>
+          typeof deposit.txId === 'string' &&
+          deposit.txId.includes(flow.txSignature as string),
+      );
 
-    if (!match) {
-      // Not an error: the deposit may simply not have landed yet.
-      return { credited: false, flow };
-    }
+      if (!match) {
+        // Not an error: the deposit may simply not have landed yet.
+        return { credited: false, flow };
+      }
 
-    // status 1 = success, 6 = credited but withdrawal-locked. Both mean the
-    // balance is spendable for a Convert, which is all this flow needs.
-    const credited = match.status === 1 || match.status === 6;
-    if (!credited) {
-      return { credited: false, flow, depositStatus: match.status };
-    }
+      // status 1 = success, 6 = credited but withdrawal-locked. Both mean the
+      // balance is spendable for a Convert, which is all this flow needs.
+      const credited = match.status === 1 || match.status === 6;
+      if (!credited) {
+        return { credited: false, flow, depositStatus: match.status };
+      }
 
-    // Already recorded -- avoid an invalid repeat transition on re-check.
-    if (flow.state === 'BINANCE_CREDITED' || flow.binanceCreditedAt) {
-      return { credited: true, flow };
-    }
+      // Already recorded -- avoid an invalid repeat transition on re-check.
+      if (flow.state === 'BINANCE_CREDITED' || flow.binanceCreditedAt) {
+        return { credited: true, flow };
+      }
 
-    const updated = await transition(
-      id,
-      'BINANCE_CREDITED',
-      {
-        binanceCreditedAt: new Date(),
-        creditedAmount: match.amount,
-        lastError: null,
-      },
-      `Binance credited ${match.amount} SOL`,
-    );
-    return { credited: true, flow: updated };
-  });
+      const updated = await transition(
+        user.id,
+        id,
+        'BINANCE_CREDITED',
+        {
+          binanceCreditedAt: new Date(),
+          creditedAmount: match.amount,
+          lastError: null,
+        },
+        `Binance credited ${match.amount} SOL`,
+      );
+      return { credited: true, flow: updated };
+    },
+    { binance: true },
+  );
 }
 
 /**
@@ -86,8 +92,9 @@ export async function PATCH(request: Request) {
     );
   }
 
-  return handleRoute('PATCH /api/flow/check-credit', () =>
+  return userRoute(request, 'PATCH /api/flow/check-credit', (user) =>
     transition(
+      user.id,
       id,
       state,
       state === 'CHAIN_CONFIRMED' ? { chainConfirmedAt: new Date() } : {},

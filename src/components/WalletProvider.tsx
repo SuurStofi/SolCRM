@@ -3,6 +3,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
+import { AuthProvider } from './AuthProvider';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -39,7 +40,10 @@ export function SolanaProviders({ children }: { children: ReactNode }) {
     <ConnectionProvider endpoint={endpoint} config={{ commitment: 'confirmed' }}>
       {/* autoConnect: reconnects a previously approved wallet on reload. */}
       <WalletProvider wallets={[]} autoConnect>
-        <WalletModalProvider>{children}</WalletModalProvider>
+        <WalletModalProvider>
+          {/* Inside the wallet context: signing in needs the wallet to sign. */}
+          <AuthProvider>{children}</AuthProvider>
+        </WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
   );

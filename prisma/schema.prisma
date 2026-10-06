@@ -1,5 +1,5 @@
-// SolCRM -- single-user personal tool. SQLite is deliberate: one user, one
-// machine, no concurrency to speak of.
+// SolCRM -- small multi-user tool. SQLite is still deliberate: a handful of
+// users on one machine, no write concurrency worth a server database.
 
 generator client {
   provider = "prisma-client-js"
@@ -21,6 +21,14 @@ datasource db {
 /// either report success too early or look stuck when it is merely pending.
 model TransferFlow {
   id String @id @default(cuid())
+
+  /// Owner. Nullable only for runs recorded before accounts existed; those are
+  /// invisible to everyone until adopted (see README, "Legacy records").
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Linked wallet the SOL was sent from.
+  fromAddress String?
 
   /// See FlowState in src/lib/flow/machine.ts for allowed values and
   /// transitions. Stored as text: SQLite has no native enum.
@@ -52,6 +60,7 @@ model TransferFlow {
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
+  @@index([userId, createdAt])
   @@index([state])
 }
 
@@ -80,8 +89,13 @@ model FlowEvent {
 model P2POrder {
   id String @id @default(cuid())
 
+  /// Owner; nullable only for pre-account records, as on TransferFlow.
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   /// Order number, copied from Binance's UI after creating the order manually.
-  orderNumber String @unique
+  /// Unique per user, not globally: both sides of one trade may use this app.
+  orderNumber String
 
   /// Ad this came from, so the counterparty can be found again.
   adNo String?
@@ -112,6 +126,222 @@ model P2POrder {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([userId, orderNumber])
   @@index([status])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Accounts
+// ---------------------------------------------------------------------------
+
+/// An account. It has no password and no email: identity is proof of control
+/// of a linked wallet (Sign-In With Solana, see src/lib/auth/siws.ts).
+model User {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  /// Buy setting. false: bought SOL stays on Binance and the stored key must
+  /// NOT be able to withdraw. true: bought SOL is withdrawn to a linked wallet
+  /// automatically, which needs a withdrawal-enabled, IP-restricted key.
+  autoWithdraw Boolean @default(false)
+
+  wallets  Wallet[]
+  sessions Session[]
+  binance  BinanceCredential?
+  flows    TransferFlow[]
+  buys     BuyFlow[]
+  orders   P2POrder[]
+
+  autoTrade     AutoTradeConfig?
+  autoTradeRuns AutoTradeRun[]
+}
+
+/// A Solana wallet whose owner proved control by signing a challenge. Any
+/// linked wallet can sign in to the account.
+model Wallet {
+  id      String @id @default(cuid())
+  /// Base58 public key. Globally unique: one wallet, one account.
+  address String @unique
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Server-side session. The cookie carries a random token; only its SHA-256
+/// is stored, so a leaked database cannot be replayed as live sessions.
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// One-time message a wallet must sign. Consumed on first verification
+/// attempt, successful or not, so a captured signature cannot be replayed.
+model AuthChallenge {
+  /// The nonce itself.
+  id        String   @id
+  address   String
+  /// LOGIN, or LINK (add a wallet to the signed-in account in userId).
+  purpose   String
+  userId    String?
+  message   String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+/// The user's own Binance API key, encrypted at rest with APP_ENCRYPTION_KEY
+/// (AES-256-GCM, bound to the user id). Never returned to the browser.
+model BinanceCredential {
+  userId       String   @id
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKeyEnc    String
+  apiSecretEnc String
+  /// Last 4 characters of the key, so the UI can say which key is stored.
+  apiKeyHint   String
+  /// Key permissions as Binance reported them when the key was saved. A
+  /// snapshot for the UI and for policy checks -- the live key is re-checked
+  /// before anything that depends on it moves money.
+  canTrade     Boolean  @default(false)
+  canWithdraw  Boolean  @default(false)
+  ipRestricted Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+/// One USDT -> SOL purchase on Binance, optionally followed by a withdrawal
+/// of the bought SOL to a linked wallet. See src/lib/buy/machine.ts.
+model BuyFlow {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  state String @default("CONVERT_QUOTED")
+
+  // --- convert leg ---
+  usdtAmount     String // decimal string spent
+  convertQuoteId String?
+  convertOrderId String?
+  convertedAt    DateTime?
+  solReceived    String?
+
+  // --- withdrawal leg (only when auto-withdraw is on) ---
+  /// Linked wallet chosen when the buy started.
+  destination     String?
+  /// Bumped only after an attempt is known to have failed on Binance's side,
+  /// so a retry never sends a second withdrawal for one that may have landed.
+  withdrawAttempt Int       @default(0)
+  withdrawId      String?
+  withdrawAmount  String?
+  withdrawFee     String?
+  withdrawTxId    String?
+  withdrawnAt     DateTime?
+
+  /// Scrubbed error text -- safe to render.
+  lastError String?
+
+  events    BuyEvent[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model BuyEvent {
+  id     String  @id @default(cuid())
+  flowId String
+  flow   BuyFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  fromState String?
+  toState   String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([flowId, createdAt])
+}
+
+/// Autotrade settings, one row per account. When enabled, the server watches
+/// Binance P2P for a USDT buyer at or above minPrice; on a match it converts
+/// amountSol SOL to USDT and publishes a SELL ad at that buyer's price. It
+/// switches itself off as soon as it starts a run, so it never trades twice
+/// without being re-armed.
+model AutoTradeConfig {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  enabled Boolean @default(false)
+  fiat    String  @default("UAH")
+  /// Lowest buyer price that triggers, fiat per USDT (decimal string).
+  minPrice  String
+  /// SOL converted per run (decimal string).
+  amountSol String
+  /// Binance trade-method identifier the buyer must accept (e.g. "Monobank").
+  buyerMethod String?
+  /// JSON array of the user's own Binance payIds, used on the published ad.
+  payIds       String @default("[]")
+  /// Per-order limits of the published ad, fiat (decimal strings).
+  minOrderFiat String
+  payTimeLimit Int    @default(15)
+
+  /// Outcome of the latest check, scrubbed -- safe to render.
+  lastCheck   String?
+  lastCheckAt DateTime?
+  updatedAt   DateTime  @updatedAt
+}
+
+model AutoTradeRun {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  state String @default("CONVERT_QUOTED")
+  fiat  String
+
+  // --- what triggered it ---
+  amountSol       String
+  triggerAdNo     String
+  /// The buyer's price, fiat per USDT; the published ad uses it.
+  triggerPrice    String
+  triggerAdvertiser String?
+
+  // --- convert leg ---
+  convertQuoteId String?
+  convertOrderId String?
+  usdtReceived   String?
+
+  // --- ad leg ---
+  advNo String?
+
+  /// Scrubbed error text -- safe to render.
+  lastError String?
+
+  events    AutoTradeEvent[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model AutoTradeEvent {
+  id    String       @id @default(cuid())
+  runId String
+  run   AutoTradeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  fromState String?
+  toState   String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([runId, createdAt])
 }

@@ -1,8 +1,10 @@
 import { getAccountSnapshot } from '@/lib/binance/account';
-import { handleRoute } from '@/lib/binance/route-helpers';
+import { userRoute } from '@/lib/auth/route';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  return handleRoute('GET /api/binance/account', () => getAccountSnapshot());
+export async function GET(request: Request) {
+  return userRoute(request, 'GET /api/binance/account', () => getAccountSnapshot(), {
+    binance: true,
+  });
 }

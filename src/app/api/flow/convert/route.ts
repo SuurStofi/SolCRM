@@ -6,8 +6,9 @@ import {
   getConvertPairLimits,
   isConvertFailed,
 } from '@/lib/binance/convert';
-import { handleRoute } from '@/lib/binance/route-helpers';
+import { userRoute } from '@/lib/auth/route';
 import { getFlow, transition, noteError } from '@/lib/flow/store';
+import { SafeError } from '@/lib/binance/redact';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,31 +35,37 @@ export async function POST(request: Request) {
   }
 
   if (action === 'quote') {
-    return handleRoute('POST /api/flow/convert (quote)', async () => {
-      const flow = await getFlow(id);
-      if (!flow) throw new Error('Flow not found');
+    return userRoute(
+      request,
+      'POST /api/flow/convert (quote)',
+      async (user) => {
+        const flow = await getFlow(user.id, id);
+        if (!flow) throw new Error('Flow not found');
 
-      // Convert whatever Binance actually credited, not what was sent: network
-      // fees mean the credited amount is slightly lower, and quoting the
-      // larger figure fails for insufficient balance.
-      const amount = flow.creditedAmount ?? flow.amountSol;
+        // Convert whatever Binance actually credited, not what was sent: network
+        // fees mean the credited amount is slightly lower, and quoting the
+        // larger figure fails for insufficient balance.
+        const amount = flow.creditedAmount ?? flow.amountSol;
 
-      const limits = await getConvertPairLimits('SOL', 'USDT');
-      if (Number(amount) < Number(limits.fromAssetMinAmount)) {
-        throw new Error(
-          `Binance's minimum SOL to USDT conversion is ${limits.fromAssetMinAmount} SOL; this flow has ${amount} SOL.`,
+        const limits = await getConvertPairLimits('SOL', 'USDT');
+        if (Number(amount) < Number(limits.fromAssetMinAmount)) {
+          throw new Error(
+            `Binance's minimum SOL to USDT conversion is ${limits.fromAssetMinAmount} SOL; this flow has ${amount} SOL.`,
+          );
+        }
+
+        const quote = await getConvertQuote('SOL', 'USDT', amount);
+        const updated = await transition(
+          user.id,
+          id,
+          'CONVERT_QUOTED',
+          { convertQuoteId: quote.quoteId, lastError: null },
+          `Quoted ${amount} SOL -> ${quote.toAmount} USDT at ${quote.ratio}`,
         );
-      }
-
-      const quote = await getConvertQuote('SOL', 'USDT', amount);
-      const updated = await transition(
-        id,
-        'CONVERT_QUOTED',
-        { convertQuoteId: quote.quoteId, lastError: null },
-        `Quoted ${amount} SOL -> ${quote.toAmount} USDT at ${quote.ratio}`,
-      );
-      return { quote, flow: updated };
-    });
+        return { quote, flow: updated };
+      },
+      { binance: true },
+    );
   }
 
   // --- accept: executes the trade ---
@@ -67,51 +74,68 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'Missing quote id.' }, { status: 400 });
   }
 
-  return handleRoute('POST /api/flow/convert (accept)', async () => {
-    try {
-      const acceptance = await acceptConvertQuote(quoteId);
-
-      // acceptQuote frequently returns PROCESS rather than a final state, so
-      // confirm the outcome rather than assuming success.
-      let status = await getConvertOrderStatus(acceptance.orderId);
-      if (status.orderStatus === 'PROCESS') {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        status = await getConvertOrderStatus(acceptance.orderId);
+  return userRoute(
+    request,
+    'POST /api/flow/convert (accept)',
+    async (user) => {
+      // Ownership first: the quote must belong to a run on this account before
+      // anything irreversible is sent to Binance.
+      const owned = await getFlow(user.id, id);
+      if (!owned) throw new SafeError('Flow not found', { status: 404 });
+      if (owned.convertQuoteId !== quoteId) {
+        throw new SafeError('That quote does not belong to this run. Request a new quote.', {
+          status: 409,
+        });
       }
 
-      if (isConvertFailed(status.orderStatus)) {
-        const failed = await transition(
+      try {
+        const acceptance = await acceptConvertQuote(quoteId);
+
+        // acceptQuote frequently returns PROCESS rather than a final state, so
+        // confirm the outcome rather than assuming success.
+        let status = await getConvertOrderStatus(acceptance.orderId);
+        if (status.orderStatus === 'PROCESS') {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          status = await getConvertOrderStatus(acceptance.orderId);
+        }
+
+        if (isConvertFailed(status.orderStatus)) {
+          const failed = await transition(
+            user.id,
+            id,
+            'CONVERT_FAILED',
+            { convertOrderId: acceptance.orderId, lastError: `Convert ${status.orderStatus}` },
+            `Convert order ${status.orderStatus}`,
+          );
+          return { flow: failed, status };
+        }
+
+        const updated = await transition(
+          user.id,
           id,
-          'CONVERT_FAILED',
-          { convertOrderId: acceptance.orderId, lastError: `Convert ${status.orderStatus}` },
-          `Convert order ${status.orderStatus}`,
+          'CONVERTED',
+          {
+            convertOrderId: acceptance.orderId,
+            convertedAt: new Date(),
+            usdtReceived: status.toAmount,
+            lastError: null,
+          },
+          `Converted to ${status.toAmount} USDT`,
         );
-        return { flow: failed, status };
+        return { flow: updated, status };
+      } catch (error) {
+        // A failure here leaves SOL sitting on Binance. Record it so the flow is
+        // resumable from CONVERT_FAILED rather than looking merely broken.
+        await noteError(user.id, id, error).catch(() => undefined);
+        const flow = await getFlow(user.id, id);
+        if (flow && flow.state === 'CONVERT_QUOTED') {
+          await transition(user.id, id, 'CONVERT_FAILED', {}, 'Convert failed').catch(
+            () => undefined,
+          );
+        }
+        throw error;
       }
-
-      const updated = await transition(
-        id,
-        'CONVERTED',
-        {
-          convertOrderId: acceptance.orderId,
-          convertedAt: new Date(),
-          usdtReceived: status.toAmount,
-          lastError: null,
-        },
-        `Converted to ${status.toAmount} USDT`,
-      );
-      return { flow: updated, status };
-    } catch (error) {
-      // A failure here leaves SOL sitting on Binance. Record it so the flow is
-      // resumable from CONVERT_FAILED rather than looking merely broken.
-      await noteError(id, error).catch(() => undefined);
-      const flow = await getFlow(id);
-      if (flow && flow.state === 'CONVERT_QUOTED') {
-        await transition(id, 'CONVERT_FAILED', {}, 'Convert failed').catch(
-          () => undefined,
-        );
-      }
-      throw error;
-    }
-  });
+    },
+    { binance: true },
+  );
 }

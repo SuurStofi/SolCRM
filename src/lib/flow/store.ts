@@ -2,7 +2,7 @@ import 'server-only';
 
 import { prisma } from '../db';
 import { assertTransition, type FlowState } from './machine';
-import { redact } from '../binance/redact';
+import { redact, SafeError } from '../binance/redact';
 
 /**
  * Persistence for transfer flows.
@@ -27,7 +27,15 @@ export interface TransitionPatch {
   lastError?: string | null;
 }
 
+/**
+ * Every function here takes the owning user's id and treats a flow belonging
+ * to anyone else exactly like one that does not exist, so a guessed id cannot
+ * be read or advanced across accounts.
+ */
+
 export async function createFlow(input: {
+  userId: string;
+  fromAddress: string;
   amountSol: string;
   depositAddress: string;
   destinationTag?: string | null;
@@ -35,6 +43,8 @@ export async function createFlow(input: {
   return prisma.transferFlow.create({
     data: {
       state: 'DRAFT',
+      userId: input.userId,
+      fromAddress: input.fromAddress,
       amountSol: input.amountSol,
       depositAddress: input.depositAddress,
       destinationTag: input.destinationTag ?? null,
@@ -43,15 +53,16 @@ export async function createFlow(input: {
   });
 }
 
-export async function getFlow(id: string) {
-  return prisma.transferFlow.findUnique({
-    where: { id },
+export async function getFlow(userId: string, id: string) {
+  return prisma.transferFlow.findFirst({
+    where: { id, userId },
     include: { events: { orderBy: { createdAt: 'asc' } } },
   });
 }
 
-export async function listFlows(limit = 20) {
+export async function listFlows(userId: string, limit = 20) {
   return prisma.transferFlow.findMany({
+    where: { userId },
     orderBy: { createdAt: 'desc' },
     take: limit,
     include: { events: { orderBy: { createdAt: 'asc' } } },
@@ -65,13 +76,14 @@ export async function listFlows(limit = 20) {
  * or key material, and this row is rendered in the UI.
  */
 export async function transition(
+  userId: string,
   id: string,
   to: FlowState,
   patch: TransitionPatch = {},
   note?: string,
 ) {
-  const current = await prisma.transferFlow.findUnique({ where: { id } });
-  if (!current) throw new Error(`Flow ${id} not found`);
+  const current = await prisma.transferFlow.findFirst({ where: { id, userId } });
+  if (!current) throw new SafeError('Flow not found', { status: 404 });
 
   assertTransition(current.state as FlowState, to);
 
@@ -99,9 +111,10 @@ export async function transition(
  * Record a failure without changing state -- used when a retry fails but the
  * flow should stay where it is (e.g. a credit check that found nothing yet).
  */
-export async function noteError(id: string, error: unknown) {
-  return prisma.transferFlow.update({
-    where: { id },
+export async function noteError(userId: string, id: string, error: unknown) {
+  await prisma.transferFlow.updateMany({
+    where: { id, userId },
     data: { lastError: redact(error) },
   });
+  return getFlow(userId, id);
 }

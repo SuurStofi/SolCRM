@@ -11,7 +11,12 @@ import {
   Chip,
   Skeleton,
   EmptyRow,
+  ShowMore,
 } from './ui';
+import { useAuth } from './AuthProvider';
+
+/** Deposits shown before the list has to be expanded. */
+const DEPOSIT_PREVIEW = 5;
 
 interface Balance {
   asset: string;
@@ -64,13 +69,40 @@ async function fetchJson<T>(url: string): Promise<T> {
   return body.data;
 }
 
+async function postJson<T>(url: string, payload: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const body = (await response.json()) as ApiResponse<T>;
+  if (!body.ok || body.data === undefined) {
+    throw new Error(body.error ?? 'Request failed');
+  }
+  return body.data;
+}
+
 export function BinancePanel() {
+  const { account: user } = useAuth();
+  // Changes when a key is added or replaced, so balances reload for the new key.
+  const keyVersion = user?.binance?.updatedAt ?? null;
   const [account, setAccount] = useState<AccountSnapshot | null>(null);
   const [deposits, setDeposits] = useState<DepositRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [redeeming, setRedeeming] = useState<string | null>(null);
+  const [redeemNote, setRedeemNote] = useState<{ text: string; ok: boolean } | null>(null);
+  const [showAllDeposits, setShowAllDeposits] = useState(false);
 
   const load = useCallback(async () => {
+    if (keyVersion === null) {
+      // No key yet: nothing to ask Binance, and no stale data from a removed key.
+      setAccount(null);
+      setDeposits([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -88,7 +120,34 @@ export function BinancePanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [keyVersion]);
+
+  /**
+   * Redeem the whole Flexible position for an asset. Binance settles a FAST
+   * redemption within seconds but not synchronously, so the reloaded balances
+   * can still show the Earn position for a moment.
+   */
+  const redeem = useCallback(
+    async (asset: string) => {
+      setRedeeming(asset);
+      setRedeemNote(null);
+      try {
+        const result = await postJson<{ redeemed: string }>('/api/binance/earn/redeem', {
+          asset,
+        });
+        setRedeemNote({ text: `Moving ${result.redeemed} ${asset} to your main balance.`, ok: true });
+        await load();
+      } catch (cause) {
+        setRedeemNote({
+          text: cause instanceof Error ? cause.message : `Could not redeem ${asset}.`,
+          ok: false,
+        });
+      } finally {
+        setRedeeming(null);
+      }
+    },
+    [load],
+  );
 
   useEffect(() => {
     // Deferred to a microtask so the initial setLoading(true) inside load()
@@ -105,21 +164,38 @@ export function BinancePanel() {
 
   return (
     <Panel
-      title="Binance"
-      subtitle="Spot account · read only"
+      title="My Binance"
+      subtitle="Main (Spot) balance · view only"
       icon={<BinanceMark />}
-      action={<RefreshButton onClick={load} loading={loading} />}
+      action={keyVersion !== null && <RefreshButton onClick={load} loading={loading} />}
     >
       <div className="space-y-6">
+        {keyVersion === null && (
+          <EmptyRow>
+            Binance is not connected yet. Add your API key in My account to see your balance here.
+          </EmptyRow>
+        )}
+
         {error && (
           <ErrorNote title="Could not load Binance account">
             <p>{error}</p>
             <p className="mt-2 opacity-80">
-              Check that <code className="font-mono">.env.local</code> has your key and
-              secret, that the key has &quot;Enable Reading&quot;, and that your IP is
-              allowlisted.
+              Check in Binance that the key saved in My account still exists, has
+              &quot;Enable Reading&quot; switched on, and allows this server&apos;s IP address.
             </p>
           </ErrorNote>
+        )}
+
+        {redeemNote && (
+          <div
+            className={`rounded-lg border px-3.5 py-2.5 text-xs leading-relaxed ${
+              redeemNote.ok
+                ? 'border-good/30 bg-good-bg text-good'
+                : 'border-bad/30 bg-bad-bg text-bad'
+            }`}
+          >
+            {redeemNote.text}
+          </div>
         )}
 
         {account && (
@@ -128,9 +204,9 @@ export function BinancePanel() {
                 here makes an over-scoped key impossible to miss. */}
             {account.permissions.canWithdraw && (
               <div className="rounded-lg border border-warn/30 bg-warn-bg px-3.5 py-2.5 text-xs leading-relaxed text-warn">
-                <span className="font-semibold">Withdrawals are enabled</span> on this API
-                key. Nothing here withdraws — turning it off in Binance limits the damage
-                if the key ever leaks.
+                <span className="font-semibold">This API key can take money out of Binance.</span>{' '}
+                This page never does that. For safety, switch off Withdrawals for the key in
+                Binance unless you use auto-withdraw.
               </div>
             )}
 
@@ -139,11 +215,11 @@ export function BinancePanel() {
                 trailing={
                   <div className="flex gap-1">
                     <Chip tone={account.permissions.canTrade ? 'accent' : 'warn'}>
-                      {account.permissions.canTrade ? 'convert ready' : 'convert off'}
+                      {account.permissions.canTrade ? 'can exchange' : 'cannot exchange'}
                     </Chip>
-                    {account.permissions.ipRestricted && <Chip tone="good">IP locked</Chip>}
+                    {account.permissions.ipRestricted && <Chip tone="good">IP protected</Chip>}
                     <Chip tone={account.permissions.canWithdraw ? 'bad' : 'good'}>
-                      {account.permissions.canWithdraw ? 'withdraw on' : 'withdraw off'}
+                      {account.permissions.canWithdraw ? 'can withdraw' : 'cannot withdraw'}
                     </Chip>
                   </div>
                 }
@@ -159,18 +235,30 @@ export function BinancePanel() {
                     // until redeemed, so flag them rather than showing a
                     // ticker that looks spendable.
                     const isEarn = balance.asset.startsWith('LD');
+                    const baseAsset = isEarn ? balance.asset.slice(2) : balance.asset;
                     return (
                       <Row key={balance.asset}>
                         <span className="flex items-center gap-1.5 font-medium">
-                          {isEarn ? balance.asset.slice(2) : balance.asset}
-                          {isEarn && <Chip tone="warn">Earn</Chip>}
+                          {baseAsset}
+                          {isEarn && <Chip tone="warn">in savings (Earn)</Chip>}
                         </span>
-                        <span className="text-right">
+                        <span className="flex items-center justify-end gap-2 text-right">
                           <span className="tabular font-medium">{balance.free}</span>
                           {Number(balance.locked) > 0 && (
-                            <span className="tabular ml-2 text-xs text-warn">
-                              +{balance.locked} locked
+                            <span className="tabular text-xs text-warn">
+                              +{balance.locked} on hold
                             </span>
+                          )}
+                          {isEarn && (
+                            <button
+                              type="button"
+                              onClick={() => redeem(baseAsset)}
+                              disabled={redeeming !== null || loading}
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-foreground transition hover:border-border-strong disabled:opacity-40"
+                            >
+                              {redeeming === baseAsset && <Spinner />}
+                              <span>Move to main balance</span>
+                            </button>
                           )}
                         </span>
                       </Row>
@@ -178,15 +266,15 @@ export function BinancePanel() {
                   })}
                 </div>
               ) : (
-                <EmptyRow>No non-zero balances</EmptyRow>
+                <EmptyRow>Your Binance balance is empty</EmptyRow>
               )}
             </div>
 
             <div>
-              <SectionLabel>Recent SOL deposits</SectionLabel>
+              <SectionLabel>SOL that arrived on Binance</SectionLabel>
               {deposits.length > 0 ? (
                 <div>
-                  {deposits.slice(0, 5).map((deposit) => (
+                  {(showAllDeposits ? deposits : deposits.slice(0, DEPOSIT_PREVIEW)).map((deposit) => (
                     <Row key={deposit.txId || deposit.insertTime}>
                       <span className="tabular font-medium">
                         {deposit.amount} {deposit.coin}
@@ -207,8 +295,14 @@ export function BinancePanel() {
                   ))}
                 </div>
               ) : (
-                <EmptyRow>No recent SOL deposits</EmptyRow>
+                <EmptyRow>No SOL has arrived recently</EmptyRow>
               )}
+              <ShowMore
+                expanded={showAllDeposits}
+                total={deposits.length}
+                previewCount={DEPOSIT_PREVIEW}
+                onToggle={() => setShowAllDeposits((current) => !current)}
+              />
             </div>
           </>
         )}

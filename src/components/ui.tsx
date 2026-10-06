@@ -1,6 +1,33 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+
+/**
+ * Whole seconds remaining until `deadline`, ticking down to zero. Passing null
+ * parks it at zero and runs no timer.
+ *
+ * The timer only forces a re-render; the value is derived during render so it
+ * can never lag a deadline that has just been replaced.
+ */
+export function useSecondsLeft(deadline: number | null): number {
+  const [, tick] = useState(0);
+
+  useEffect(() => {
+    if (deadline === null) return;
+
+    const timer = setInterval(() => {
+      tick((n) => n + 1);
+      if (secondsUntil(deadline) <= 0) clearInterval(timer);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [deadline]);
+
+  return secondsUntil(deadline);
+}
+
+function secondsUntil(deadline: number | null): number {
+  return deadline === null ? 0 : Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+}
 
 export function Panel({
   title,
@@ -144,6 +171,35 @@ export function Chip({
 export function Skeleton({ className = '' }: { className?: string }) {
   return (
     <div className={`animate-pulse rounded bg-border/70 ${className}`} />
+  );
+}
+
+/**
+ * Expand/collapse control for a list that shows a preview by default.
+ * Renders nothing when the preview already covers everything, so a short list
+ * does not carry a control that would do nothing.
+ */
+export function ShowMore({
+  expanded,
+  total,
+  previewCount,
+  onToggle,
+}: {
+  expanded: boolean;
+  total: number;
+  previewCount: number;
+  onToggle: () => void;
+}) {
+  if (total <= previewCount) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="mt-2 text-[11px] font-medium text-muted underline-offset-2 transition hover:text-foreground hover:underline"
+    >
+      {expanded ? `Show fewer` : `Show all ${total}`}
+    </button>
   );
 }
 

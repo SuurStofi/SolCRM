@@ -27,13 +27,6 @@ yarn-error.log*
 .env.*.local
 *.key
 
-# Credential archives -- a zip of .env.local is still a secret.
-*.env.zip
-binance.env.zip
-*.env.tar
-*.env.tar.gz
-secrets*.zip
-
 # database (may contain trade history + Binance data)
 /prisma/*.db
 /prisma/*.db-journal
@@ -47,3 +40,16 @@ secrets*.zip
 
 # vercel
 .vercel
+
+# Server credentials: SSH private key and host details. Never commit these.
+/private/
+*.pem
+id_ed25519*
+id_rsa*
+
+# Credential archives -- a zip of .env.local is still a secret.
+*.env.zip
+binance.env.zip
+*.env.tar
+*.env.tar.gz
+secrets*.zip

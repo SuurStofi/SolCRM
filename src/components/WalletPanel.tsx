@@ -81,8 +81,8 @@ export function WalletPanel() {
 
   return (
     <Panel
-      title="Wallet"
-      subtitle="Solana · read only"
+      title="My wallet"
+      subtitle="Solana · view only"
       icon={<SolanaMark />}
       action={
         <div className="flex items-center gap-2">
@@ -130,7 +130,7 @@ export function WalletPanel() {
                 ) : null
               }
             >
-              SPL tokens
+              Other coins
             </SectionLabel>
 
             {activeSnapshot ? (
@@ -157,7 +157,7 @@ export function WalletPanel() {
                   )}
                 </div>
               ) : (
-                <EmptyRow>No token balances</EmptyRow>
+                <EmptyRow>No other coins</EmptyRow>
               )
             ) : (
               <SkeletonRows />
@@ -166,7 +166,7 @@ export function WalletPanel() {
 
           {/* Transactions */}
           <div>
-            <SectionLabel>Recent activity</SectionLabel>
+            <SectionLabel>Recent transactions</SectionLabel>
             {activeSnapshot ? (
               activeTransactions.length > 0 ? (
                 <div>
@@ -246,7 +246,8 @@ function EmptyState() {
       <div>
         <p className="text-sm font-medium">Connect your wallet</p>
         <p className="mx-auto mt-1 max-w-[16rem] text-xs leading-relaxed text-muted">
-          Read-only. Your private key stays in Phantom — this app never sees it.
+          To see your balance. The app can only look — every payment needs your approval in
+          Phantom, and your secret key never leaves it.
         </p>
       </div>
     </div>
