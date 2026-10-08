@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { userRoute } from '@/lib/auth/route';
 import { getAdapter, parseProvider, enabledProviders } from '@/lib/banks';
+import { encodePrivatCredential } from '@/lib/banks/privat';
+import { SafeError } from '@/lib/binance/redact';
 import {
   listConnections,
   createConnection,
@@ -34,6 +36,7 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     provider?: unknown;
     token?: unknown;
+    clientId?: unknown;
     label?: unknown;
     consent?: unknown;
   };
@@ -45,16 +48,30 @@ export async function POST(request: Request) {
     );
   }
 
-  const token = String(body.token ?? '').trim();
-  if (!token) {
-    return NextResponse.json({ ok: false, error: 'Paste your token.' }, { status: 400 });
-  }
-
   return userRoute(request, 'POST /api/banks/connections', async (user) => {
     const provider = parseProvider(body.provider);
     const adapter = getAdapter(provider);
 
-    // Verify first: an unusable token should never reach the database.
+    // Monobank takes one token; Privat24 AutoClient takes an id and a token.
+    // Both are stored as one opaque string so the models stay provider-neutral.
+    const token =
+      provider === 'privat_business'
+        ? encodePrivatCredential({
+            id: String(body.clientId ?? '').trim(),
+            token: String(body.token ?? '').trim(),
+          })
+        : String(body.token ?? '').trim();
+
+    if (provider === 'privat_business' && !String(body.clientId ?? '').trim()) {
+      throw new SafeError('Enter the AutoClient id from Privat24 for Business.', {
+        status: 400,
+      });
+    }
+    if (!String(body.token ?? '').trim()) {
+      throw new SafeError('Paste your token.', { status: 400 });
+    }
+
+    // Verify first: an unusable credential should never reach the database.
     const info = await adapter.verify(token);
 
     const label = String(body.label ?? '').trim() || info.name || adapter.displayName;

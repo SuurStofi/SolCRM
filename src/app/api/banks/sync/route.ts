@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { userRoute } from '@/lib/auth/route';
 import { SafeError } from '@/lib/binance/redact';
 import { getAdapter } from '@/lib/banks';
-import { msUntilAllowed } from '@/lib/banks/monobank';
 import {
   getConnection,
   loadCredential,
@@ -46,10 +45,10 @@ export async function POST(request: Request) {
 
     // Report the wait instead of making the call and taking a 429: the user
     // gets a number to look at rather than an error.
-    const wait = msUntilAllowed(credential);
+    const wait = adapter.msUntilAllowed(credential);
     if (wait > 0) {
       throw new SafeError(
-        `Monobank allows one refresh per minute. Try again in ${Math.ceil(wait / 1000)} seconds.`,
+        `${adapter.displayName} was just asked. Try again in ${Math.ceil(wait / 1000)} seconds.`,
         { status: 429 },
       );
     }

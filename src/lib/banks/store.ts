@@ -43,6 +43,23 @@ export async function getConnection(userId: string, id: string) {
   });
 }
 
+/**
+ * Last 4 characters of the token itself.
+ *
+ * A Privat credential is stored as JSON holding an id and a token, so slicing
+ * the stored string would show the JSON tail (`ef"}`) rather than anything
+ * recognisable. Pull the token out first when that is what it is.
+ */
+function hintFor(credential: string): string {
+  try {
+    const parsed = JSON.parse(credential) as { token?: unknown };
+    if (typeof parsed.token === 'string') return parsed.token.slice(-4);
+  } catch {
+    /* not JSON: a plain token */
+  }
+  return credential.slice(-4);
+}
+
 export async function createConnection(input: {
   userId: string;
   provider: BankProvider;
@@ -56,7 +73,7 @@ export async function createConnection(input: {
       credentialEnc: input.credential
         ? encryptForUser(input.userId, input.credential)
         : null,
-      tokenHint: input.credential ? input.credential.slice(-4) : null,
+      tokenHint: input.credential ? hintFor(input.credential) : null,
       label: input.label ?? null,
       // Set here rather than defaulted in the schema: a row without an explicit
       // consent moment should not exist.

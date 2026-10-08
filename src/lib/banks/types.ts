@@ -90,6 +90,15 @@ export interface BankProviderAdapter {
   /** Shortest gap the provider allows between calls, per credential. */
   readonly minRequestIntervalMs: number;
 
+  /**
+   * How long until this credential may call again, in ms. 0 when it may now.
+   *
+   * On the adapter rather than in the route: each provider enforces its own
+   * interval, and a route that reached for one provider's limiter would check
+   * the wrong budget for the other.
+   */
+  msUntilAllowed(credential: string): number;
+
   /** Longest window a single transaction request may cover. */
   readonly maxWindowMs: number;
 }

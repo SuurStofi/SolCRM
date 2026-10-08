@@ -6,6 +6,7 @@
 - **My cards** (Home tab): connect a bank and see card balances and recent payments. Read-only by contract — the integration has no way to move money, and never asks for a bank login, PIN, SMS code or card number. Card numbers are stored and shown masked. Disconnecting deletes the token and everything read with it. Transactions are purged after `BANKS_RETENTION_DAYS` (default 90).
 - **Monobank** via the official personal API (`api.monobank.ua`), behind `BANKS_MONOBANK_ENABLED` (off by default). Bank credentials are encrypted at rest with the same AES-256-GCM helper as the Binance key and are never returned to the browser.
 - Bank provider interface (`src/lib/banks/types.ts`) so a Monobank personal token can be swapped for Corporate access, or another bank added, without touching the models, routes or screens.
+- **Privat24 for Business** via the official AutoClient API, behind `BANKS_PRIVAT_ENABLED` (off by default). Business (FOP/company) accounts only — PrivatBank publishes no personal-card API, and none is faked.
 - `BANKS_MONOBANK_ENABLED`, `BANKS_PRIVAT_ENABLED`, `BANKS_RETENTION_DAYS`.
 
 - **Three tabs**: P2P (everything that was on the dashboard, plus Autotrade), Exchanger and Compare. The tab is kept in the URL hash.
@@ -23,9 +24,9 @@
 ### Migrations
 - `20261008091407_banks` — adds `BankConnection`, `BankAccount` and `BankTransaction`. Additive only; no existing table is changed.
 
-### Not yet verified against a live token
-- Monobank response **field names** are taken from the published spec and community SDKs. The machine-readable spec (`swagger.json`) answers 403 to non-browser clients, so the field names could not be read from it directly. Endpoints, the `X-Token` header, the one-request-per-minute limit and the 31-day statement window **were** verified first-hand. One correction already found: the statement balance field is `balance`, not `balanceAfter`.
-- No Monobank call has been made with a real token. The rate limiter, the window clamp, the minor-unit arithmetic and the flag gating were tested with mocked data.
+### Verified
+- Privat24 AutoClient endpoints, the `id`/`token` headers and the DD-MM-YYYY date format were confirmed by probing the live API: dummy credentials return `VE014 Bad token format`, which only happens after the headers and date parse. No call has been made with real AutoClient credentials yet.
+- Monobank was connected with a real personal token on 2026-10-08: client info, balances and statements all read correctly, so the response field names are confirmed rather than inferred. Endpoints, the `X-Token` header, the one-request-per-minute limit and the 31-day statement window were verified first-hand beforehand. One correction found on the way: the statement balance field is `balance`, not `balanceAfter`.
 
 ### Fixed
 - P2P ads showed order limits as fiat. Binance sends them in the asset (SOL, USDT); they are now labelled that way.

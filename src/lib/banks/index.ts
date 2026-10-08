@@ -2,6 +2,7 @@ import 'server-only';
 
 import { SafeError } from '../binance/redact';
 import { monobankAdapter } from './monobank';
+import { privatBusinessAdapter } from './privat';
 import { BANK_PROVIDERS, type BankProvider, type BankProviderAdapter } from './types';
 
 export * from './types';
@@ -28,6 +29,9 @@ export function isProviderEnabled(provider: BankProvider): boolean {
 
 const ADAPTERS: Partial<Record<BankProvider, BankProviderAdapter>> = {
   monobank: monobankAdapter,
+  privat_business: privatBusinessAdapter,
+  // privat_import has no adapter: its rows come from an uploaded statement,
+  // not from an API, so it is handled by the import route instead.
 };
 
 export function getAdapter(provider: BankProvider): BankProviderAdapter {

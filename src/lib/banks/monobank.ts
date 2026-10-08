@@ -209,6 +209,7 @@ export const monobankAdapter: BankProviderAdapter = {
   minRequestIntervalMs: MIN_REQUEST_INTERVAL_MS,
   maxWindowMs: MAX_WINDOW_MS,
 
+  msUntilAllowed,
   verify: clientInfo,
   fetchAccounts: clientInfo,
 

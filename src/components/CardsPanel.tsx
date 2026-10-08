@@ -101,6 +101,8 @@ export function CardsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [token, setToken] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [provider, setProvider] = useState<string>('');
   const [consent, setConsent] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -144,11 +146,13 @@ export function CardsPanel() {
     setError(null);
     try {
       await api('/api/banks/connections', {
-        provider: available[0]?.provider ?? 'monobank',
+        provider: provider || available[0]?.provider || 'monobank',
         token: token.trim(),
+        clientId: clientId.trim(),
         consent,
       });
       setToken('');
+      setClientId('');
       setConsent(false);
       setConnecting(false);
       await load();
@@ -247,9 +251,13 @@ export function CardsPanel() {
               </div>
             ) : (
               <ConnectForm
-                displayName={available[0]?.displayName ?? 'your bank'}
+                available={available}
+                provider={provider || available[0]?.provider || 'monobank'}
+                onProvider={setProvider}
                 token={token}
                 onToken={setToken}
+                clientId={clientId}
+                onClientId={setClientId}
                 consent={consent}
                 onConsent={setConsent}
                 busy={busy === 'connect'}
@@ -397,35 +405,75 @@ export function CardsPanel() {
   );
 }
 
+const CONNECT_STEPS: Record<string, string[]> = {
+  monobank: [
+    'Open api.monobank.ua in your browser and sign in with the app.',
+    'Copy the token it gives you.',
+    'Paste it below. We check it with the bank before saving.',
+  ],
+  privat_business: [
+    'In Privat24 for Business, open the AutoClient settings and create an application.',
+    'Copy the client id and the token it issues.',
+    'Paste both below. We check them with the bank before saving.',
+  ],
+};
+
 function ConnectForm({
-  displayName,
+  available,
+  provider,
+  onProvider,
   token,
   onToken,
+  clientId,
+  onClientId,
   consent,
   onConsent,
   busy,
   onCancel,
   onSubmit,
 }: {
-  displayName: string;
+  available: Array<{ provider: string; displayName: string }>;
+  provider: string;
+  onProvider: (value: string) => void;
   token: string;
   onToken: (value: string) => void;
+  clientId: string;
+  onClientId: (value: string) => void;
   consent: boolean;
   onConsent: (value: boolean) => void;
   busy: boolean;
   onCancel: () => void;
   onSubmit: () => void;
 }) {
+  const current = available.find((entry) => entry.provider === provider) ?? available[0];
+  const isPrivat = provider === 'privat_business';
+  const steps = CONNECT_STEPS[provider] ?? CONNECT_STEPS.monobank;
+
   return (
     <div className="space-y-4 rounded-xl border border-border bg-surface-subtle px-4 py-4">
+      {available.length > 1 && (
+        <div className="flex gap-1 rounded-lg border border-border bg-surface p-1">
+          {available.map((entry) => (
+            <button
+              key={entry.provider}
+              type="button"
+              onClick={() => onProvider(entry.provider)}
+              className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                provider === entry.provider
+                  ? 'bg-accent text-accent-fg'
+                  : 'text-muted hover:bg-surface-subtle hover:text-foreground'
+              }`}
+            >
+              {entry.displayName}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div>
-        <h3 className="text-sm font-semibold">Connect {displayName}</h3>
+        <h3 className="text-sm font-semibold">Connect {current?.displayName ?? 'your bank'}</h3>
         <ol className="mt-2.5 grid gap-2">
-          {[
-            'Open api.monobank.ua in your browser and sign in with the app.',
-            'Copy the token it gives you.',
-            'Paste it below. We check it with the bank before saving.',
-          ].map((step, index) => (
+          {steps.map((step, index) => (
             <li key={step} className="flex gap-2.5 text-xs leading-relaxed text-muted">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-fg">
                 {index + 1}
@@ -441,17 +489,34 @@ function ConnectForm({
       <div className="rounded-lg border border-border bg-surface px-3.5 py-3 text-xs leading-relaxed text-muted">
         <p className="font-medium text-foreground">What this does</p>
         <ul className="mt-1.5 space-y-1">
-          <li>• Reads your card balances and recent payments.</li>
+          <li>• Reads your balances and recent payments.</li>
           <li>• Never moves money, and cannot: the connection is read-only.</li>
           <li>• Never asks for your bank login, PIN, SMS codes or card number.</li>
-          <li>• Stores the token encrypted. It is never sent back to your browser.</li>
-          <li>• Disconnecting deletes the token and everything read with it.</li>
+          <li>• Stores the credentials encrypted. They never go back to your browser.</li>
+          <li>• Disconnecting deletes them and everything read with them.</li>
         </ul>
-        <p className="mt-2 text-warn">
-          Monobank&apos;s personal token is meant for your own account. Using it for other
-          people needs Monobank&apos;s Corporate API.
-        </p>
+        {isPrivat ? (
+          <p className="mt-2 text-warn">
+            AutoClient is only available on Privat24 <strong>for Business</strong> (FOP or
+            company). Personal PrivatBank cards have no public API.
+          </p>
+        ) : (
+          <p className="mt-2 text-warn">
+            Monobank&apos;s personal token is meant for your own account. Using it for other
+            people needs Monobank&apos;s Corporate API.
+          </p>
+        )}
       </div>
+
+      {isPrivat && (
+        <input
+          value={clientId}
+          onChange={(event) => onClientId(event.target.value)}
+          placeholder="AutoClient id"
+          autoComplete="off"
+          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+        />
+      )}
 
       <input
         value={token}
@@ -476,7 +541,7 @@ function ConnectForm({
         <button
           type="button"
           onClick={onSubmit}
-          disabled={busy || !token.trim() || !consent}
+          disabled={busy || !token.trim() || !consent || (isPrivat && !clientId.trim())}
           className="inline-flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-40"
         >
           {busy && <Spinner className="border-t-accent-fg" />}

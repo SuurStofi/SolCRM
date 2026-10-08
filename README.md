@@ -345,8 +345,37 @@ Refreshes are queued per token and the UI shows the remaining wait instead of
 retrying into a 429. Balances and transactions are fetched in separate calls so
 one refresh stays inside the limit.
 
-### Privat24
+## Privat24 for Business (AutoClient)
 
-`BANKS_PRIVAT_ENABLED` reserves the switch; the integration is not built yet.
-When it is: AutoClient for **Privat24 for Business** (FOP) only, plus statement
-import for personal cards, because PrivatBank publishes no personal-card API.
+Off by default. Switch it on with `BANKS_PRIVAT_ENABLED=true`.
+
+**Business accounts only.** AutoClient exists for Privat24 **for Business**
+(FOP or company). PrivatBank publishes no API for a personal card, so personal
+cards are not supported here and the app does not pretend otherwise — the
+planned path for those is statement import (CSV/XLSX export from Privat24),
+which is not built yet.
+
+### Connecting
+
+1. In Privat24 for Business, open AutoClient and create an application.
+2. Copy the **client id** and the **token**.
+3. Paste both in **Home → My cards**, tick consent, press *Check and connect*.
+
+### Verified against the live API (2026-10-08)
+
+| | |
+|---|---|
+| Base | `https://acp.privatbank.ua/api` |
+| Balances | `GET /statements/balance?startDate=DD-MM-YYYY` |
+| Transactions | `GET /statements/transactions?startDate=DD-MM-YYYY` |
+| Auth headers | `id` and `token` |
+| Date format | **DD-MM-YYYY** — an ISO date is rejected |
+
+The header names were confirmed by sending dummy values and getting
+`VE014 Bad token format`: the server reached token validation, so it had
+accepted the headers. Balance responses come back as `charset=cp1251`, so the
+client decodes by the declared charset rather than assuming UTF-8.
+
+AutoClient reports money as decimal strings in major units where Monobank uses
+integer minor units; the adapter converts via string handling so no value
+passes through a float.
