@@ -1,5 +1,6 @@
 import { userRoute } from '@/lib/auth/route';
 import { buildTotals } from '@/lib/totals/aggregate';
+import { buildActivity } from '@/lib/totals/activity';
 import { DISPLAY_CURRENCIES, isDisplayCurrency, USD, getRate } from '@/lib/totals/rates';
 import { spotPrice } from '@/lib/binance/market';
 import { getFreeBalances } from '@/lib/binance/account';
@@ -86,6 +87,8 @@ export async function POST(request: Request) {
       .reduce((sum, line) => sum + (line.converted ?? 0), 0);
     result.unconvertible = [...new Set(result.unconvertible)];
 
-    return { ...result, currencies: DISPLAY_CURRENCIES };
+    const activity = await buildActivity(user.id);
+
+    return { ...result, activity, currencies: DISPLAY_CURRENCIES };
   });
 }

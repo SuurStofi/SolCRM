@@ -413,3 +413,25 @@ know it and does not pretend to. PayPal appears under **Not counted**, labelled
 A PayPal receive address is treated as a destination, never as the user's
 holding: its on-chain balance belongs to PayPal, so it is never read and never
 added to the total.
+
+## Tests
+
+```bash
+npm test
+```
+
+Node's built-in runner, no extra framework. The suite covers the parts where a
+quiet mistake would mean a wrong number rather than a crash:
+
+- **Money conversion** in all three shapes the providers send — Monobank's
+  integer minor units, Privat's major-unit decimal strings, PYUSD's six
+  decimals — checked against exact integers, including values a float gets
+  wrong.
+- **Total-balance rules**: stale sources keeping their value, in-transit money
+  not double-counted, PayPal excluded even when a figure is typed by hand,
+  unpriceable assets named rather than dropped, and a credit limit not counted
+  as the holder's money.
+- **Bank response parsing** against hand-written payloads in the documented
+  shape.
+
+No test calls a real bank, and no real token appears in the suite.

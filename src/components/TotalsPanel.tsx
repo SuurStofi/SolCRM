@@ -19,6 +19,18 @@ interface SourceLine {
   excludedFromTotal?: boolean;
 }
 
+interface ActivityItem {
+  id: string;
+  source: 'wallet' | 'binance' | 'bank' | 'paypal' | 'p2p';
+  title: string;
+  detail?: string;
+  amount?: string;
+  unit?: string;
+  at: string;
+  signature?: string;
+  failed?: boolean;
+}
+
 interface Totals {
   displayCurrency: number;
   total: number;
@@ -26,6 +38,7 @@ interface Totals {
   inTransit: Array<{ id: string; label: string; amount: number; currencyCode: number }>;
   unconvertible: string[];
   rate: { source: string; asOf: string | null };
+  activity: ActivityItem[];
   currencies: ReadonlyArray<{ code: number; name: string; symbol: string }>;
 }
 
@@ -251,12 +264,73 @@ export function TotalsPanel() {
                 </p>
               </div>
             )}
+            <div>
+              <SectionLabel>Recent activity</SectionLabel>
+              {data.activity.length === 0 ? (
+                <EmptyRow>Nothing has moved yet.</EmptyRow>
+              ) : (
+                <div>
+                  {data.activity.slice(0, 12).map((item) => {
+                    const outgoing = item.amount?.startsWith('-');
+                    return (
+                      <Row key={item.id}>
+                        <span className="flex min-w-0 flex-1 items-start gap-2">
+                          <span
+                            aria-hidden="true"
+                            className="mt-[3px] shrink-0 text-faint"
+                            title={SOURCE_NAMES[item.source]}
+                          >
+                            {SOURCE_ICONS[item.source]}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm">{item.title}</span>
+                            <span className="block truncate text-[11px] text-faint">
+                              {ago(item.at)}
+                              {item.detail ? ` · ${item.detail}` : ''}
+                            </span>
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          {item.failed && <Chip tone="bad">failed</Chip>}
+                          {item.amount && (
+                            <span
+                              className={`tabular text-sm font-medium ${
+                                outgoing ? '' : 'text-good'
+                              }`}
+                            >
+                              {item.amount} {item.unit}
+                            </span>
+                          )}
+                        </span>
+                      </Row>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>
     </Panel>
   );
 }
+
+/** One glyph per source, so a row's origin reads at a glance. */
+const SOURCE_ICONS: Record<ActivityItem['source'], string> = {
+  wallet: '◎',
+  binance: '◆',
+  bank: '■',
+  paypal: '●',
+  p2p: '▲',
+};
+
+const SOURCE_NAMES: Record<ActivityItem['source'], string> = {
+  wallet: 'Wallet',
+  binance: 'Binance',
+  bank: 'Bank card',
+  paypal: 'PayPal',
+  p2p: 'P2P deal',
+};
 
 function SumMark() {
   return (
