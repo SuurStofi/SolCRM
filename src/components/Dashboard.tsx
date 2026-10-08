@@ -448,7 +448,9 @@ function HomeTab() {
           <HoldingsCharts />
         </div>
       </div>
-      <div hidden={active !== "cards"} className="mx-auto max-w-2xl space-y-5">
+      {/* Side by side from the large breakpoint; stacked on narrow screens,
+          where two columns would squeeze both. */}
+      <div hidden={active !== "cards"} className="grid items-start gap-5 lg:grid-cols-2">
         <CardsPanel />
         <PayPalPanel />
       </div>

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 // Self-hosted rather than next/font/google: fetching from fonts.googleapis.com
 // at build time silently falls back to a system font on any network that
 // cannot reach it, so the app renders differently depending on where it is
@@ -13,6 +13,19 @@ export const metadata: Metadata = {
   title: "SolCRM",
   description:
     "Your Solana wallet, Binance account, and trading tools in one clear workspace. Connect your wallet, view your assets, and make your next move.",
+};
+
+/**
+ * Without this, mobile browsers lay the page out at a ~980px virtual width and
+ * scale it down, so every phone screenshot showed content clipped off the
+ * right edge no matter what the CSS said. `viewport-fit=cover` is what makes
+ * env(safe-area-inset-*) resolve to real values on a notched phone, which the
+ * bottom tab bar relies on.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

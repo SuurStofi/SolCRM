@@ -48,6 +48,9 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), sans-serif;
+  /* A single wide child must never make the whole page scroll sideways.
+     Wide tables scroll inside their own overflow-x container instead. */
+  overflow-x: hidden;
 }
 ::selection {
   background: #a679dd66;
@@ -1116,9 +1119,21 @@ textarea:focus {
     display: none;
   }
 }
-@media (max-width: 600px) {
+/* 860px, not 600px: between those widths the four nav links plus the wallet
+   action are wider than the header, and "Wallet" was clipped off the right
+   edge. The hamburger has to appear before that happens, not after. */
+@media (max-width: 860px) {
+  /* Footer and inline links render 15-20px tall, which is a fiddly target on
+     a touch screen. Padding lifts the hit area without moving the text. */
+  .site-footer a,
+  .text-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+  }
   .brand {
     font-size: 23px;
+    min-height: 40px;
   }
   .brand .brand-mark {
     width: 31px;
@@ -1167,13 +1182,34 @@ textarea:focus {
   }
   .header-actions {
     gap: 10px;
+    /* Without this the wallet button, which widens to fit the address, is
+       pushed off the right edge at 390px. */
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  .header-actions .wallet-adapter-button-trigger {
+    max-width: 42vw;
+    padding: 0 11px !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* The brand may shrink; the action must stay reachable. */
+  .site-header-inner .brand {
+    min-width: 0;
+    overflow: hidden;
   }
   .hero {
     padding: 54px 18px 0;
   }
   .hero h1 {
-    font-size: clamp(43px, 11vw, 63px);
-    letter-spacing: -0.065em;
+    /* The lower bound was 43px, which is wider than a 390px screen for
+       "All your moves." -- the heading ran off the right edge. Scaling with
+       the viewport keeps the line inside it down to 360px. */
+    font-size: clamp(30px, 9vw, 63px);
+    letter-spacing: -0.05em;
+    /* A long word must break rather than push the page wider. */
+    overflow-wrap: break-word;
   }
   .hero-content > p {
     font-size: 14px;
@@ -1377,17 +1413,45 @@ textarea:focus {
     font-size: 16px;
   }
 }
+/* On phones the workspace tabs become a fixed bottom bar: thumbs reach the
+   bottom of a tall screen far more easily than the top, and the tabs stay put
+   while a long panel scrolls. Tablets and desktop keep the top tabs. */
 @media (max-width: 600px) {
   .workspace-tabs {
-    flex-wrap: wrap;
+    position: fixed;
+    z-index: 45;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: 0;
+    gap: 2px;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: #0c0912f2;
+    backdrop-filter: blur(20px);
     overflow: visible;
   }
   .workspace-tabs button {
-    flex: 1 1 30%;
+    flex: 1 1 0;
     min-width: 0;
+    /* Comfortably past the 44px touch target minimum. */
+    min-height: 52px;
+    padding: 6px 2px;
+    gap: 3px;
   }
-  .workspace-tabs button:nth-last-child(-n + 2) {
-    flex-basis: 45%;
+  /* The hint line is noise at this size; the label carries it. */
+  .workspace-tabs button span:last-child {
+    display: none;
+  }
+  .workspace-tabs button span:first-child {
+    font-size: 11px;
+    line-height: 1.1;
+  }
+  /* Room so the bar never covers the end of a panel. */
+  .app-main {
+    padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px));
   }
   .checklist-item > div {
     flex-basis: 100%;

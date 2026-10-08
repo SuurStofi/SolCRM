@@ -53,3 +53,9 @@ binance.env.zip
 *.env.tar
 *.env.tar.gz
 secrets*.zip
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
