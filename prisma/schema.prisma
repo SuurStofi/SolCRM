@@ -157,6 +157,7 @@ model User {
   autoTradeRuns AutoTradeRun[]
 
   bankConnections BankConnection[]
+  payoutAddresses PayoutAddress[]
 }
 
 /// A Solana wallet whose owner proved control by signing a challenge. Any
@@ -473,4 +474,30 @@ model BankTransaction {
 
   @@unique([bankAccountId, externalId])
   @@index([bankAccountId, time])
+}
+
+/// An address the user sends PYUSD *to*, such as their PayPal receive address.
+///
+/// Deliberately NOT a Wallet: a Wallet is a key the user proved control of and
+/// can sign in with. This is somebody else's address that happens to belong to
+/// the user's PayPal account, so it must never be treated as theirs -- its
+/// on-chain balance is PayPal's, not the user's, and is never read or counted.
+model PayoutAddress {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Base58 Solana address.
+  address String
+  /// What the user called it, e.g. "My PayPal".
+  label   String
+
+  /// Which service this address belongs to. Only `paypal` for now, but a
+  /// column beats a second table when another destination appears.
+  kind String @default("paypal")
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, address])
+  @@index([userId])
 }

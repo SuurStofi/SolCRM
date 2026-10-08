@@ -7,6 +7,7 @@ import { shortenAddress } from "@/lib/solana/read";
 import { useAuth } from "./AuthProvider";
 import { AccountPanel } from "./AccountPanel";
 import { CardsPanel } from "./CardsPanel";
+import { PayPalPanel } from "./PayPalPanel";
 import { WalletPanel } from "./WalletPanel";
 import { BinancePanel } from "./BinancePanel";
 import { TransferPanel } from "./TransferPanel";
@@ -253,6 +254,14 @@ const MARKET_SECTIONS = [
     steps: [],
   },
   {
+    id: "paypal",
+    label: "PayPal",
+    title: "Move money with PayPal",
+    about:
+      "PayPal can send and receive PYUSD, a dollar stablecoin, over the Solana network. You move it from your own wallet, so this app never needs your PayPal login — and cannot read your PayPal balance.",
+    steps: [],
+  },
+  {
     id: "transfer",
     label: "Transfer",
     title: "Move coins between Binance and your wallet",
@@ -462,6 +471,9 @@ function MarketTab() {
           expires in seconds, and switching must not discard one. */}
       <div hidden={active !== "swap"} className="mx-auto max-w-2xl">
         <ConvertPanel />
+      </div>
+      <div hidden={active !== "paypal"} className="mx-auto max-w-2xl">
+        <PayPalPanel />
       </div>
       <div hidden={active !== "transfer"}>
         <TransferSection onOpenExchange={() => select("swap")} />

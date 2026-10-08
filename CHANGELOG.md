@@ -7,7 +7,9 @@
 - **Monobank** via the official personal API (`api.monobank.ua`), behind `BANKS_MONOBANK_ENABLED` (off by default). Bank credentials are encrypted at rest with the same AES-256-GCM helper as the Binance key and are never returned to the browser.
 - Bank provider interface (`src/lib/banks/types.ts`) so a Monobank personal token can be swapped for Corporate access, or another bank added, without touching the models, routes or screens.
 - **Privat24 for Business** via the official AutoClient API, behind `BANKS_PRIVAT_ENABLED` (off by default). Business (FOP/company) accounts only — PrivatBank publishes no personal-card API, and none is faked.
-- `BANKS_MONOBANK_ENABLED`, `BANKS_PRIVAT_ENABLED`, `BANKS_RETENTION_DAYS`.
+- **PayPal** (Market tab) via **PYUSD on Solana**, behind `PAYPAL_PYUSD_ENABLED` (off by default). Receive shows the wallet address with a QR and numbered steps; Send builds an SPL transfer the user signs in their own wallet. No PayPal API is used — PayPal publishes none for reading a consumer's balance — so the app never asks for a PayPal login and never claims to know the PayPal balance.
+- `PayoutAddress` model for saved PayPal receive addresses. Deliberately not a `Wallet`: nobody proved control of it, so it can never sign in, and its on-chain balance is PayPal's rather than the user's.
+- `BANKS_MONOBANK_ENABLED`, `BANKS_PRIVAT_ENABLED`, `BANKS_RETENTION_DAYS`, `PAYPAL_PYUSD_ENABLED`.
 
 - **Three tabs**: P2P (everything that was on the dashboard, plus Autotrade), Exchanger and Compare. The tab is kept in the URL hash.
 - **Exchanger tab**: exchangers on BestChange that buy or sell SOL, USDT (Solana) and USDC (Solana) through e-money, bank accounts and cards. Picked like on BestChange — payment system, then currency — with search, currency and type filters. Per rail, every offer with limits, reviews and warnings, and its difference from the best Binance P2P price in the same fiat.
@@ -22,10 +24,13 @@
 - Binance P2P ads (P2P ads panel, Compare) link to the advertiser's merchant page instead of the filtered P2P board, or to the ad itself when the advertiser cannot be looked up.
 
 ### Migrations
+- `20261008095300_payout_addresses` — adds `PayoutAddress`. Additive only.
 - `20261008091407_banks` — adds `BankConnection`, `BankAccount` and `BankTransaction`. Additive only; no existing table is changed.
 
 ### Verified
+- PYUSD's mint, decimals and token program were read from mainnet, not from a token list: `2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo`, 6 decimals, **Token-2022**. The mint carries a `transferFeeConfig` (0 bps today) and a `transferHook` (unset today), so the fee is read per transfer rather than assumed zero.
 - Privat24 AutoClient endpoints, the `id`/`token` headers and the DD-MM-YYYY date format were confirmed by probing the live API: dummy credentials return `VE014 Bad token format`, which only happens after the headers and date parse. No call has been made with real AutoClient credentials yet.
+- No PYUSD transfer has been sent with real funds. The mint, decimals, program, fee config, amount conversion and address validation were verified; the end-to-end send was not.
 - Monobank was connected with a real personal token on 2026-10-08: client info, balances and statements all read correctly, so the response field names are confirmed rather than inferred. Endpoints, the `X-Token` header, the one-request-per-minute limit and the 31-day statement window were verified first-hand beforehand. One correction found on the way: the statement balance field is `balance`, not `balanceAfter`.
 
 ### Fixed
