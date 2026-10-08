@@ -8,6 +8,12 @@ Multi-account dashboard: Solana wallet → Binance → P2P. You sign in with a S
 
 ---
 
+## Website and workspace
+
+The public landing page lives at `/`; the wallet-authenticated workspace lives at `/app`. Existing `/#home`, `/#market`, `/#p2p`, `/#exchange`, and `/#compare` bookmarks redirect to their matching workspace views. The workspace keeps panels mounted when switching tools so in-progress quotes and transfers retain their state.
+
+The interface uses a dark purple theme with reduced-motion support. The original brand asset is `public/solcrm-logo.jpg`; regenerate browser and Apple icons with `node scripts/make-icons.mjs`.
+
 ## Setup
 
 ```bash

@@ -1,5 +1,5 @@
 /**
- * Generate the app icons from logo.jpg.
+ * Generate the app icons from the original SolCRM logo.
  *
  * Next picks these up by filename convention (app/favicon.ico, app/icon.png,
  * app/apple-icon.png) and emits the right <link> tags itself, so nothing has to
@@ -7,10 +7,10 @@
  *
  * Run with: node scripts/make-icons.mjs
  */
-import sharp from 'sharp';
-import { writeFile } from 'node:fs/promises';
+import sharp from "sharp";
+import { writeFile } from "node:fs/promises";
 
-const SOURCE = 'logo.jpg';
+const SOURCE = "public/solcrm-logo.jpg";
 
 /**
  * Build a .ico containing several sizes.
@@ -26,7 +26,7 @@ async function buildIco(sizes) {
   const images = await Promise.all(
     sizes.map((size) =>
       sharp(SOURCE)
-        .resize(size, size, { fit: 'cover' })
+        .resize(size, size, { fit: "cover" })
         .ensureAlpha()
         .png({ palette: false, compressionLevel: 9 })
         .toBuffer(),
@@ -60,23 +60,23 @@ async function buildIco(sizes) {
 
 const outputs = [
   // Browser tab / bookmarks. Multi-size so it stays sharp wherever it is drawn.
-  ['src/app/favicon.ico', await buildIco([16, 32, 48])],
+  ["src/app/favicon.ico", await buildIco([16, 32, 48])],
   // Modern browsers prefer this over the .ico. 192px covers tabs and PWA
-  // tiles; the source is only 203px, so anything larger is upscaled padding.
+  // tiles; keep sizes below the 203px original to avoid upscaling.
   [
-    'src/app/icon.png',
+    "src/app/icon.png",
     await sharp(SOURCE)
-      .resize(192, 192, { fit: 'cover' })
+      .resize(192, 192, { fit: "cover" })
       .png({ compressionLevel: 9, palette: true })
       .toBuffer(),
   ],
   // iOS home screen. No alpha: iOS composites it on black, and the logo's
   // light background would otherwise be lost.
   [
-    'src/app/apple-icon.png',
+    "src/app/apple-icon.png",
     await sharp(SOURCE)
-      .resize(180, 180, { fit: 'cover' })
-      .flatten({ background: '#ffffff' })
+      .resize(180, 180, { fit: "cover" })
+      .flatten({ background: "#0c0912" })
       .png({ compressionLevel: 9, palette: true })
       .toBuffer(),
   ],
