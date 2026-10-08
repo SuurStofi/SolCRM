@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from "react";
 
 /**
  * Whole seconds remaining until `deadline`, ticking down to zero. Passing null
@@ -26,7 +26,9 @@ export function useSecondsLeft(deadline: number | null): number {
 }
 
 function secondsUntil(deadline: number | null): number {
-  return deadline === null ? 0 : Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+  return deadline === null
+    ? 0
+    : Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
 }
 
 export function Panel({
@@ -43,7 +45,7 @@ export function Panel({
   children: ReactNode;
 }) {
   return (
-    <section className="rise flex flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-card)]">
+    <section className="app-panel rise flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--shadow-card)]">
       <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
         <div className="flex items-center gap-2.5">
           {icon && <span className="text-muted">{icon}</span>}
@@ -69,7 +71,7 @@ export function SectionLabel({
 }) {
   return (
     <div className="mb-2 flex items-center justify-between">
-      <span className="text-[11px] font-medium uppercase tracking-wider text-faint">
+      <span className="text-xs font-medium uppercase tracking-wider text-muted">
         {children}
       </span>
       {trailing}
@@ -100,7 +102,7 @@ export function ErrorNote({
   );
 }
 
-export function Spinner({ className = '' }: { className?: string }) {
+export function Spinner({ className = "" }: { className?: string }) {
   return (
     <span
       role="status"
@@ -129,7 +131,7 @@ export function RefreshButton({
         viewBox="0 0 16 16"
         fill="none"
         aria-hidden="true"
-        className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`}
+        className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
       >
         <path
           d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2v3h-3"
@@ -139,28 +141,28 @@ export function RefreshButton({
           strokeLinejoin="round"
         />
       </svg>
-      {loading ? 'Loading' : 'Refresh'}
+      {loading ? "Loading" : "Refresh"}
     </button>
   );
 }
 
 export function Chip({
   children,
-  tone = 'neutral',
+  tone = "neutral",
 }: {
   children: ReactNode;
-  tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'accent';
+  tone?: "neutral" | "good" | "warn" | "bad" | "accent";
 }) {
   const tones = {
-    neutral: 'bg-surface-subtle text-muted border-border',
-    good: 'bg-good-bg text-good border-good/25',
-    warn: 'bg-warn-bg text-warn border-warn/25',
-    bad: 'bg-bad-bg text-bad border-bad/25',
-    accent: 'bg-accent/10 text-accent border-accent/25',
+    neutral: "bg-surface-subtle text-muted border-border",
+    good: "bg-good-bg text-good border-good/25",
+    warn: "bg-warn-bg text-warn border-warn/25",
+    bad: "bg-bad-bg text-bad border-bad/25",
+    accent: "bg-accent/10 text-accent border-accent/25",
   } as const;
   return (
     <span
-      className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium leading-tight ${tones[tone]}`}
+      className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium leading-tight ${tones[tone]}`}
     >
       {children}
     </span>
@@ -168,10 +170,8 @@ export function Chip({
 }
 
 /** Placeholder line used while data loads, to avoid layout jumping. */
-export function Skeleton({ className = '' }: { className?: string }) {
-  return (
-    <div className={`animate-pulse rounded bg-border/70 ${className}`} />
-  );
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-border/70 ${className}`} />;
 }
 
 /**
@@ -223,7 +223,7 @@ export function ExtLink({
       target="_blank"
       rel="noreferrer"
       className={`group inline-flex items-center gap-1 text-muted transition hover:text-foreground ${
-        mono ? 'font-mono text-xs' : ''
+        mono ? "font-mono text-xs" : ""
       }`}
     >
       {children}
@@ -254,7 +254,12 @@ export function CopyButton({ value }: { value: string }) {
       onClick={() => void navigator.clipboard?.writeText(value)}
       className="rounded p-1 text-faint transition hover:bg-surface-subtle hover:text-foreground"
     >
-      <svg viewBox="0 0 14 14" fill="none" aria-hidden="true" className="h-3 w-3">
+      <svg
+        viewBox="0 0 14 14"
+        fill="none"
+        aria-hidden="true"
+        className="h-3 w-3"
+      >
         <rect
           x="4.5"
           y="4.5"

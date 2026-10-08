@@ -61,7 +61,7 @@ const MIN_ARC = 3;
  *
  * The theme is external state (a media query plus an attribute on <html>), so
  * it is subscribed to rather than copied into state in an effect. The server
- * snapshot is `false`: there is no DOM to read during prerender, and light is
+ * snapshot is `true`: there is no DOM to read during prerender, and dark is
  * the default palette.
  */
 function useIsDark(): boolean {
@@ -86,7 +86,7 @@ function useIsDark(): boolean {
       if (attr === 'light') return false;
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
     },
-    () => false,
+    () => true,
   );
 }
 

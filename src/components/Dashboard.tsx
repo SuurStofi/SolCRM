@@ -1,24 +1,26 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useState } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { shortenAddress } from '@/lib/solana/read';
-import { useAuth } from './AuthProvider';
-import { AccountPanel } from './AccountPanel';
-import { WalletPanel } from './WalletPanel';
-import { BinancePanel } from './BinancePanel';
-import { TransferPanel } from './TransferPanel';
-import { BuyPanel } from './BuyPanel';
-import { ConvertPanel } from './ConvertPanel';
-import { HoldingsCharts } from './HoldingsCharts';
-import { P2PAdsPanel } from './P2PAdsPanel';
-import { P2POrdersPanel } from './P2POrdersPanel';
-import { AutoTradePanel } from './AutoTradePanel';
-import { ExchangePanel } from './ExchangePanel';
-import { ComparePanel } from './ComparePanel';
-import { RateLimitBanner } from './RateLimitBanner';
-import { ErrorNote, Spinner } from './ui';
+import { useCallback, useEffect, useState } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { shortenAddress } from "@/lib/solana/read";
+import { useAuth } from "./AuthProvider";
+import { AccountPanel } from "./AccountPanel";
+import { WalletPanel } from "./WalletPanel";
+import { BinancePanel } from "./BinancePanel";
+import { TransferPanel } from "./TransferPanel";
+import { BuyPanel } from "./BuyPanel";
+import { ConvertPanel } from "./ConvertPanel";
+import { HoldingsCharts } from "./HoldingsCharts";
+import { P2PAdsPanel } from "./P2PAdsPanel";
+import { P2POrdersPanel } from "./P2POrdersPanel";
+import { AutoTradePanel } from "./AutoTradePanel";
+import { ExchangePanel } from "./ExchangePanel";
+import { ComparePanel } from "./ComparePanel";
+import { RateLimitBanner } from "./RateLimitBanner";
+import { ErrorNote, Spinner } from "./ui";
+import { BrandMark } from "./Brand";
+import Link from "next/link";
 
 /**
  * Chooses between the sign-in screen and the dashboard. Every panel below the
@@ -46,18 +48,18 @@ export function Dashboard() {
 }
 
 const TABS = [
-  { id: 'home', label: 'Home', hint: 'Your wallet & account' },
-  { id: 'market', label: 'Market', hint: 'Exchange & transfer' },
-  { id: 'p2p', label: 'P2P', hint: 'Trade with people & auto-sell' },
-  { id: 'exchange', label: 'Dealer', hint: 'Buy & sell · BestChange' },
-  { id: 'compare', label: 'Compare', hint: 'Sort by price' },
+  { id: "home", label: "Overview", hint: "Wallets & account" },
+  { id: "market", label: "Exchange", hint: "Swap & transfer" },
+  { id: "p2p", label: "P2P", hint: "Trade with people & auto-sell" },
+  { id: "exchange", label: "Dealers", hint: "BestChange offers" },
+  { id: "compare", label: "Compare", hint: "Sort by price" },
 ] as const;
 
-type TabId = (typeof TABS)[number]['id'];
+type TabId = (typeof TABS)[number]["id"];
 
 /** The hash is `#tab` or `#tab/section`; this reads the tab part. */
 function tabFromHash(): TabId | null {
-  const hash = window.location.hash.slice(1).split('/')[0];
+  const hash = window.location.hash.slice(1).split("/")[0];
   return TABS.find((tab) => tab.id === hash)?.id ?? null;
 }
 
@@ -69,8 +71,10 @@ function tabFromHash(): TabId | null {
  * would drop that state.
  */
 function Tabs() {
-  const [active, setActive] = useState<TabId>('home');
-  const [visited, setVisited] = useState<Set<TabId>>(() => new Set<TabId>(['home']));
+  const [active, setActive] = useState<TabId>("home");
+  const [visited, setVisited] = useState<Set<TabId>>(
+    () => new Set<TabId>(["home"]),
+  );
 
   const open = useCallback((id: TabId) => {
     setActive(id);
@@ -85,38 +89,68 @@ function Tabs() {
       if (id) open(id);
     };
     void Promise.resolve().then(sync);
-    window.addEventListener('hashchange', sync);
-    return () => window.removeEventListener('hashchange', sync);
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
   }, [open]);
 
   function select(id: TabId) {
-    history.replaceState(null, '', `#${id}`);
+    history.replaceState(null, "", `#${id}`);
     open(id);
   }
 
   return (
     <>
-      <nav
-        role="tablist"
-        aria-label="Workspaces"
-        className="mb-5 flex gap-1 rounded-xl border border-border bg-surface p-1 shadow-[var(--shadow-card)]"
-      >
+      <div className="workspace-heading">
+        <div>
+          <span className="eyebrow">YOUR SOLANA WORKSPACE</span>
+          <h1>{TABS.find((tab) => tab.id === active)?.label}</h1>
+          <p>
+            {TABS.find((tab) => tab.id === active)?.hint}. Everything in one
+            place.
+          </p>
+        </div>
+        <span className="workspace-status">
+          <i /> Solana mainnet
+        </span>
+      </div>
+      <nav role="tablist" aria-label="Workspaces" className="workspace-tabs">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
             role="tab"
             aria-selected={active === tab.id}
+            id={`tab-${tab.id}`}
+            aria-controls={`panel-${tab.id}`}
+            tabIndex={active === tab.id ? 0 : -1}
+            onKeyDown={(event) => {
+              const index = TABS.findIndex((item) => item.id === tab.id);
+              const next =
+                event.key === "ArrowRight"
+                  ? (index + 1) % TABS.length
+                  : event.key === "ArrowLeft"
+                    ? (index + TABS.length - 1) % TABS.length
+                    : event.key === "Home"
+                      ? 0
+                      : event.key === "End"
+                        ? TABS.length - 1
+                        : null;
+              if (next !== null) {
+                event.preventDefault();
+                select(TABS[next].id);
+                document.getElementById(`tab-${TABS[next].id}`)?.focus();
+              }
+            }}
             onClick={() => select(tab.id)}
             className={`flex flex-1 flex-col items-center rounded-lg px-3 py-2 transition sm:flex-row sm:justify-center sm:gap-2 ${
               active === tab.id
-                ? 'bg-accent text-accent-fg'
-                : 'text-muted hover:bg-surface-subtle hover:text-foreground'
+                ? "bg-accent text-accent-fg"
+                : "text-muted hover:bg-surface-subtle hover:text-foreground"
             }`}
           >
             <span className="text-sm font-semibold">{tab.label}</span>
             <span
-              className={`text-[11px] ${active === tab.id ? 'text-accent-fg/80' : 'text-faint'}`}
+              className={`text-[11px] ${active === tab.id ? "text-accent-fg/80" : "text-faint"}`}
             >
               {tab.hint}
             </span>
@@ -124,26 +158,51 @@ function Tabs() {
         ))}
       </nav>
 
-      <div role="tabpanel" hidden={active !== 'home'}>
+      <div
+        role="tabpanel"
+        id="panel-home"
+        aria-labelledby="tab-home"
+        hidden={active !== "home"}
+      >
         <HomeTab />
       </div>
-      {visited.has('market') && (
-        <div role="tabpanel" hidden={active !== 'market'}>
+      {visited.has("market") && (
+        <div
+          role="tabpanel"
+          id="panel-market"
+          aria-labelledby="tab-market"
+          hidden={active !== "market"}
+        >
           <MarketTab />
         </div>
       )}
-      {visited.has('p2p') && (
-        <div role="tabpanel" hidden={active !== 'p2p'}>
+      {visited.has("p2p") && (
+        <div
+          role="tabpanel"
+          id="panel-p2p"
+          aria-labelledby="tab-p2p"
+          hidden={active !== "p2p"}
+        >
           <P2PTab />
         </div>
       )}
-      {visited.has('exchange') && (
-        <div role="tabpanel" hidden={active !== 'exchange'}>
+      {visited.has("exchange") && (
+        <div
+          role="tabpanel"
+          id="panel-exchange"
+          aria-labelledby="tab-exchange"
+          hidden={active !== "exchange"}
+        >
           <ExchangePanel />
         </div>
       )}
-      {visited.has('compare') && (
-        <div role="tabpanel" hidden={active !== 'compare'}>
+      {visited.has("compare") && (
+        <div
+          role="tabpanel"
+          id="panel-compare"
+          aria-labelledby="tab-compare"
+          hidden={active !== "compare"}
+        >
           <ComparePanel />
         </div>
       )}
@@ -157,78 +216,80 @@ function Tabs() {
  */
 const HOME_SECTIONS = [
   {
-    id: 'wallet',
-    label: 'My wallet',
-    title: 'What you have',
-    about: 'Your Solana wallet and your Binance account, side by side. Nothing here moves money.',
+    id: "wallet",
+    label: "My wallet",
+    title: "What you have",
+    about:
+      "Your Solana wallet and your Binance account, side by side. Nothing here moves money.",
     steps: [],
   },
   {
-    id: 'account',
-    label: 'My account',
-    title: 'Account and Binance connection',
-    about: 'Your wallets, your Binance API key and where bought SOL goes.',
+    id: "account",
+    label: "My account",
+    title: "Account and Binance connection",
+    about: "Your wallets, your Binance API key and where bought SOL goes.",
     steps: [],
   },
 ] as const;
 
-type HomeSectionId = (typeof HOME_SECTIONS)[number]['id'];
+type HomeSectionId = (typeof HOME_SECTIONS)[number]["id"];
 
 const MARKET_SECTIONS = [
   {
-    id: 'swap',
-    label: 'Exchange',
-    title: 'Exchange one coin for another',
+    id: "swap",
+    label: "Exchange",
+    title: "Exchange one coin for another",
     about:
-      'Swap between any two coins Binance supports, on your own Binance account. Nothing leaves Binance, and nothing moves on the blockchain.',
+      "Swap between any two coins Binance supports, on your own Binance account. Nothing leaves Binance, and nothing moves on the blockchain.",
     steps: [],
   },
   {
-    id: 'transfer',
-    label: 'Transfer',
-    title: 'Move coins between Binance and your wallet',
+    id: "transfer",
+    label: "Transfer",
+    title: "Move coins between Binance and your wallet",
     about:
-      'Everything that crosses between your Phantom wallet and Binance. Exchanging inside Binance is instant; moving on-chain takes a minute or two and costs a network fee.',
+      "Everything that crosses between your Phantom wallet and Binance. Exchanging inside Binance is instant; moving on-chain takes a minute or two and costs a network fee.",
     steps: [],
   },
 ] as const;
 
-type MarketSectionId = (typeof MARKET_SECTIONS)[number]['id'];
+type MarketSectionId = (typeof MARKET_SECTIONS)[number]["id"];
 
 const P2P_SECTIONS = [
   {
-    id: 'people',
-    label: 'Trade with people',
-    title: 'Trade with people (P2P)',
+    id: "people",
+    label: "Trade with people",
+    title: "Trade with people (P2P)",
     about:
-      'P2P means person to person: you sell or buy crypto directly with someone who pays by bank card or transfer. Binance holds the crypto until the payment arrives, so neither side can run off with it.',
+      "P2P means person to person: you sell or buy crypto directly with someone who pays by bank card or transfer. Binance holds the crypto until the payment arrives, so neither side can run off with it.",
     steps: [
-      'Find a good offer below and open it on Binance.',
-      'Make the deal in the Binance app — this app cannot do that part for you.',
-      'Optionally, save the deal here to keep track of it.',
+      "Find a good offer below and open it on Binance.",
+      "Make the deal in the Binance app — this app cannot do that part for you.",
+      "Optionally, save the deal here to keep track of it.",
     ],
   },
   {
-    id: 'auto',
-    label: 'Auto-sell',
-    title: 'Sell automatically at your price',
-    about: 'Watches Binance P2P for you and acts when a buyer offers at least your price.',
+    id: "auto",
+    label: "Auto-sell",
+    title: "Sell automatically at your price",
+    about:
+      "Watches Binance P2P for you and acts when a buyer offers at least your price.",
     steps: [
-      'Set the lowest price you accept and how much SOL to sell.',
-      'Turn it on. The server checks prices every minute.',
-      'When the price is reached, it exchanges your SOL to USDT and posts a sale ad on Binance, then turns itself off.',
+      "Set the lowest price you accept and how much SOL to sell.",
+      "Turn it on. The server checks prices every minute.",
+      "When the price is reached, it exchanges your SOL to USDT and posts a sale ad on Binance, then turns itself off.",
     ],
   },
 ] as const;
 
-type P2PSectionId = (typeof P2P_SECTIONS)[number]['id'];
+type P2PSectionId = (typeof P2P_SECTIONS)[number]["id"];
 
 /** The hash is `#tab/section`; this reads the section for one tab. */
 function sectionFromHash<T extends string>(
   tabId: string,
   ids: readonly { id: T }[],
 ): T | null {
-  const [tab, section] = window.location.hash.slice(1).split('/');
+  const [tab, section] = window.location.hash.slice(1).split("/");
   if (tab !== tabId) return null;
   return ids.find((s) => s.id === section)?.id ?? null;
 }
@@ -261,17 +322,20 @@ function SectionChrome({
   return (
     <>
       {sections.length > 1 && (
-        <nav aria-label={label} className="mb-4 flex gap-1.5 overflow-x-auto pb-1">
+        <nav
+          aria-label={label}
+          className="mb-4 flex gap-1.5 overflow-x-auto pb-1"
+        >
           {sections.map((s) => (
             <button
               key={s.id}
               type="button"
-              aria-current={active === s.id ? 'page' : undefined}
+              aria-current={active === s.id ? "page" : undefined}
               onClick={() => onSelect(s.id)}
               className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
                 active === s.id
-                  ? 'border-accent bg-accent/10 text-accent'
-                  : 'border-border bg-surface text-muted hover:border-border-strong hover:text-foreground'
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-border bg-surface text-muted hover:border-border-strong hover:text-foreground"
               }`}
             >
               {s.label}
@@ -281,12 +345,19 @@ function SectionChrome({
       )}
 
       <div className="mb-5 rounded-xl border border-border bg-surface-subtle px-5 py-4">
-        <h2 className="text-base font-semibold tracking-tight">{section.title}</h2>
-        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted">{section.about}</p>
+        <h2 className="text-base font-semibold tracking-tight">
+          {section.title}
+        </h2>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted">
+          {section.about}
+        </p>
         {section.steps.length > 0 && (
           <ol className="mt-3 grid gap-2 sm:grid-cols-3">
             {section.steps.map((step, index) => (
-              <li key={step} className="flex gap-2.5 text-xs leading-relaxed text-muted">
+              <li
+                key={step}
+                className="flex gap-2.5 text-xs leading-relaxed text-muted"
+              >
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-fg">
                   {index + 1}
                 </span>
@@ -316,13 +387,13 @@ function useHashSection<T extends string>(
       if (id) setActive(id);
     };
     void Promise.resolve().then(sync);
-    window.addEventListener('hashchange', sync);
-    return () => window.removeEventListener('hashchange', sync);
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
   }, [tabId, sections]);
 
   const select = useCallback(
     (id: T) => {
-      history.replaceState(null, '', `#${tabId}/${id}`);
+      history.replaceState(null, "", `#${tabId}/${id}`);
       setActive(id);
     },
     [tabId],
@@ -333,11 +404,11 @@ function useHashSection<T extends string>(
 
 /** Wallet and account: what you have and how it is connected. */
 function HomeTab() {
-  const [active, select] = useHashSection('home', HOME_SECTIONS, 'wallet');
+  const [active, select] = useHashSection("home", HOME_SECTIONS, "wallet");
 
   return (
     <>
-      <GettingStarted onOpenAccount={() => select('account')} />
+      <GettingStarted onOpenAccount={() => select("account")} />
 
       <SectionChrome
         label="Home sections"
@@ -346,14 +417,16 @@ function HomeTab() {
         onSelect={(id) => select(id as HomeSectionId)}
       />
 
-      <div hidden={active !== 'wallet'}>
-        <HoldingsCharts />
+      <div hidden={active !== "wallet"}>
         <div className="grid items-start gap-5 lg:grid-cols-2">
           <WalletPanel />
           <BinancePanel />
         </div>
+        <div className="mt-5">
+          <HoldingsCharts />
+        </div>
       </div>
-      <div hidden={active !== 'account'} className="mx-auto max-w-2xl">
+      <div hidden={active !== "account"} className="mx-auto max-w-2xl">
         <AccountPanel />
       </div>
     </>
@@ -362,7 +435,7 @@ function HomeTab() {
 
 /** Exchanging inside Binance, and moving coins in or out of it. */
 function MarketTab() {
-  const [active, select] = useHashSection('market', MARKET_SECTIONS, 'swap');
+  const [active, select] = useHashSection("market", MARKET_SECTIONS, "swap");
 
   return (
     <>
@@ -375,11 +448,11 @@ function MarketTab() {
 
       {/* Both sections stay mounted, only hidden: each holds a live quote that
           expires in seconds, and switching must not discard one. */}
-      <div hidden={active !== 'swap'} className="mx-auto max-w-2xl">
+      <div hidden={active !== "swap"} className="mx-auto max-w-2xl">
         <ConvertPanel />
       </div>
-      <div hidden={active !== 'transfer'}>
-        <TransferSection onOpenExchange={() => select('swap')} />
+      <div hidden={active !== "transfer"}>
+        <TransferSection onOpenExchange={() => select("swap")} />
       </div>
     </>
   );
@@ -387,7 +460,7 @@ function MarketTab() {
 
 /** Trading with people, and the robot that does it at a set price. */
 function P2PTab() {
-  const [active, select] = useHashSection('p2p', P2P_SECTIONS, 'people');
+  const [active, select] = useHashSection("p2p", P2P_SECTIONS, "people");
 
   return (
     <>
@@ -398,11 +471,14 @@ function P2PTab() {
         onSelect={(id) => select(id as P2PSectionId)}
       />
 
-      <div hidden={active !== 'people'} className="grid items-start gap-5 lg:grid-cols-2">
+      <div
+        hidden={active !== "people"}
+        className="grid items-start gap-5 lg:grid-cols-2"
+      >
         <P2PAdsPanel />
         <P2POrdersPanel />
       </div>
-      <div hidden={active !== 'auto'} className="mx-auto max-w-3xl">
+      <div hidden={active !== "auto"} className="mx-auto max-w-3xl">
         <AutoTradePanel />
       </div>
     </>
@@ -411,26 +487,28 @@ function P2PTab() {
 
 const MOVES = [
   {
-    id: 'sell',
-    label: 'Sell SOL',
-    flow: 'Phantom → Binance → USDT',
-    about: 'Send SOL from your wallet to Binance and turn it into USDT.',
+    id: "sell",
+    label: "Sell SOL",
+    flow: "Phantom → Binance → USDT",
+    about: "Send SOL from your wallet to Binance and turn it into USDT.",
   },
   {
-    id: 'buy',
-    label: 'Buy SOL',
-    flow: 'USDT → Solana → Phantom',
-    about: 'Spend USDT already on Binance to get SOL, optionally withdrawn to your wallet.',
+    id: "buy",
+    label: "Buy SOL",
+    flow: "USDT → Solana → Phantom",
+    about:
+      "Spend USDT already on Binance to get SOL, optionally withdrawn to your wallet.",
   },
   {
-    id: 'toSol',
-    label: 'Any coin → SOL',
-    flow: 'any coin → Solana → Phantom',
-    about: 'Turn any coin you hold on Binance into SOL, then withdraw it to your wallet.',
+    id: "toSol",
+    label: "Any coin → SOL",
+    flow: "any coin → Solana → Phantom",
+    about:
+      "Turn any coin you hold on Binance into SOL, then withdraw it to your wallet.",
   },
 ] as const;
 
-type MoveId = (typeof MOVES)[number]['id'];
+type MoveId = (typeof MOVES)[number]["id"];
 
 /**
  * The three ways coins cross between Binance and the wallet.
@@ -439,7 +517,7 @@ type MoveId = (typeof MOVES)[number]['id'];
  * switching between moves must not discard one mid-decision.
  */
 function TransferSection({ onOpenExchange }: { onOpenExchange: () => void }) {
-  const [move, setMove] = useState<MoveId>('sell');
+  const [move, setMove] = useState<MoveId>("sell");
   const current = MOVES.find((m) => m.id === move) ?? MOVES[0];
 
   return (
@@ -458,13 +536,13 @@ function TransferSection({ onOpenExchange }: { onOpenExchange: () => void }) {
             onClick={() => setMove(m.id)}
             className={`flex flex-1 flex-col items-center rounded-md px-2 py-2 text-center transition ${
               move === m.id
-                ? 'bg-accent text-accent-fg'
-                : 'text-muted hover:bg-surface-subtle hover:text-foreground'
+                ? "bg-accent text-accent-fg"
+                : "text-muted hover:bg-surface-subtle hover:text-foreground"
             }`}
           >
             <span className="text-sm font-medium">{m.label}</span>
             <span
-              className={`text-[10px] leading-tight ${move === m.id ? 'text-accent-fg/80' : 'text-faint'}`}
+              className={`text-[10px] leading-tight ${move === m.id ? "text-accent-fg/80" : "text-faint"}`}
             >
               {m.flow}
             </span>
@@ -474,13 +552,13 @@ function TransferSection({ onOpenExchange }: { onOpenExchange: () => void }) {
 
       <p className="mb-4 text-xs leading-relaxed text-muted">{current.about}</p>
 
-      <div hidden={move !== 'sell'}>
+      <div hidden={move !== "sell"}>
         <TransferPanel />
       </div>
-      <div hidden={move !== 'buy'}>
+      <div hidden={move !== "buy"}>
         <BuyPanel />
       </div>
-      <div hidden={move !== 'toSol'}>
+      <div hidden={move !== "toSol"}>
         <AnyCoinToSol onOpenExchange={onOpenExchange} />
       </div>
     </div>
@@ -504,10 +582,13 @@ function AnyCoinToSol({ onOpenExchange }: { onOpenExchange: () => void }) {
     <div className="rounded-xl border border-border bg-surface-subtle px-4 py-4">
       <ol className="grid gap-2.5">
         {[
-          'In Exchange, pick the coin you hold and SOL as the target, check the price and confirm. The SOL lands on your Binance account.',
-          'Come back here to Buy SOL and withdraw it to Phantom. With auto-withdraw on (Home → My account) that happens for you.',
+          "In Exchange, pick the coin you hold and SOL as the target, check the price and confirm. The SOL lands on your Binance account.",
+          "Come back here to Buy SOL and withdraw it to Phantom. With auto-withdraw on (Home → My account) that happens for you.",
         ].map((step, index) => (
-          <li key={step} className="flex gap-2.5 text-xs leading-relaxed text-muted">
+          <li
+            key={step}
+            className="flex gap-2.5 text-xs leading-relaxed text-muted"
+          >
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-fg">
               {index + 1}
             </span>
@@ -547,7 +628,9 @@ function GettingStarted({ onOpenAccount }: { onOpenAccount: () => void }) {
     try {
       await linkConnectedWallet();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not link the wallet.');
+      setError(
+        cause instanceof Error ? cause.message : "Could not link the wallet.",
+      );
     } finally {
       setBusy(false);
     }
@@ -555,7 +638,9 @@ function GettingStarted({ onOpenAccount }: { onOpenAccount: () => void }) {
 
   return (
     <div className="mb-5 rounded-xl border border-accent/30 bg-accent/5 px-5 py-4">
-      <h2 className="text-sm font-semibold">Before you start — 2 quick steps</h2>
+      <h2 className="text-sm font-semibold">
+        Before you start — 2 quick steps
+      </h2>
       <p className="mt-0.5 text-xs text-muted">
         Selling SOL needs both. Buying needs only the Binance step.
       </p>
@@ -572,10 +657,10 @@ function GettingStarted({ onOpenAccount }: { onOpenAccount: () => void }) {
           title="Connect your wallet"
           detail={
             !connected
-              ? 'Open Phantom (or another Solana wallet) so the app can see your SOL.'
+              ? "Open Phantom (or another Solana wallet) so the app can see your SOL."
               : !connectedWalletLinked
-                ? 'This wallet is connected but not added to your account yet.'
-                : 'Connected.'
+                ? "This wallet is connected but not added to your account yet."
+                : "Connected."
           }
           action={
             !connected ? (
@@ -626,18 +711,24 @@ function ChecklistItem({
   action: React.ReactNode;
 }) {
   return (
-    <li className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3.5 py-3">
+    <li className="checklist-item flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3.5 py-3">
       <div className="flex min-w-0 flex-1 items-start gap-2.5">
         <span
           className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
-            done ? 'bg-good text-white' : 'border border-border-strong text-faint'
+            done
+              ? "bg-good text-white"
+              : "border border-border-strong text-faint"
           }`}
           aria-hidden="true"
         >
-          {done ? '✓' : ''}
+          {done ? "✓" : ""}
         </span>
         <div className="min-w-0">
-          <p className={`text-sm font-medium ${done ? 'text-muted line-through' : ''}`}>{title}</p>
+          <p
+            className={`text-sm font-medium ${done ? "text-muted line-through" : ""}`}
+          >
+            {title}
+          </p>
           <p className="mt-0.5 text-xs leading-relaxed text-muted">{detail}</p>
         </div>
       </div>
@@ -653,7 +744,7 @@ export function AccountBadge() {
   const first = account.wallets[0]?.address;
   return (
     <span className="rounded-md border border-border bg-surface-subtle px-2 py-1 font-mono text-[11px] font-medium text-muted">
-      {first ? shortenAddress(first, 4) : 'signed in'}
+      {first ? shortenAddress(first, 4) : "signed in"}
     </span>
   );
 }
@@ -670,47 +761,80 @@ function SignIn() {
     try {
       await signIn();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Sign-in failed.');
+      setError(cause instanceof Error ? cause.message : "Sign-in failed.");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="rise mx-auto flex max-w-sm flex-col items-center gap-5 rounded-xl border border-border bg-surface px-6 py-10 text-center shadow-[var(--shadow-card)]">
-      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-lg font-bold text-accent-fg">
-        S
-      </span>
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Sign in with your wallet</h2>
-        <p className="mt-1.5 text-xs leading-relaxed text-muted">
-          Your wallet is your account — no password. New wallets get an account automatically.
-          You sign a message, not a transaction: nothing is sent and no fee is paid.
+    <div className="signin-layout">
+      <div className="signin-intro">
+        <span className="eyebrow">WELCOME TO SOLCRM</span>
+        <h1>
+          Your wallet.
+          <br />
+          <span>Your workspace.</span>
+        </h1>
+        <p>
+          A familiar way to sign in. A calmer way to manage your Solana
+          workflow.
         </p>
+        <ul>
+          <li>
+            <span>01</span> Connect Phantom or a compatible Solana wallet
+          </li>
+          <li>
+            <span>02</span> Sign a message to confirm it’s you
+          </li>
+          <li>
+            <span>03</span> Explore your wallet and exchange tools
+          </li>
+        </ul>
+        <Link href="/#how-it-works" className="text-link">
+          New here? See how it works ↗
+        </Link>
       </div>
-
-      {error && (
-        <div className="w-full text-left">
-          <ErrorNote>{error}</ErrorNote>
+      <div className="signin-card rise">
+        <BrandMark className="signin-mark" />
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight">
+            Make yourself at home
+          </h2>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted">
+            Your wallet is your account — no password. New wallets get an
+            account automatically. You sign a message, not a transaction:
+            nothing is sent and no fee is paid.
+          </p>
         </div>
-      )}
 
-      {connected && publicKey ? (
-        <div className="flex w-full flex-col items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void handleSignIn()}
-            disabled={busy}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-50"
-          >
-            {busy && <Spinner className="border-t-accent-fg" />}
-            <span>Sign in as {shortenAddress(publicKey.toBase58(), 4)}</span>
-          </button>
+        {error && (
+          <div className="w-full text-left">
+            <ErrorNote>{error}</ErrorNote>
+          </div>
+        )}
+
+        {connected && publicKey ? (
+          <div className="flex w-full flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleSignIn()}
+              disabled={busy}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-accent-fg transition hover:brightness-110 disabled:opacity-50"
+            >
+              {busy && <Spinner className="border-t-accent-fg" />}
+              <span>Sign in as {shortenAddress(publicKey.toBase58(), 4)}</span>
+            </button>
+            <WalletMultiButton />
+          </div>
+        ) : (
           <WalletMultiButton />
+        )}
+        <div className="signin-footnote">
+          <span>◇</span> No transaction. No sign-in fee.
+          <p>On mobile? Use your wallet’s in-app browser.</p>
         </div>
-      ) : (
-        <WalletMultiButton />
-      )}
+      </div>
     </div>
   );
 }

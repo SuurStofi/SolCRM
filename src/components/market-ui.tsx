@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import type { ReactNode } from 'react';
+import type { ReactNode } from "react";
 
 /** Shared bits of the Dealer and Compare tabs. */
 
-export type Side = 'sell' | 'buy';
-export type CryptoId = 'SOL' | 'USDT' | 'USDC';
+export type Side = "sell" | "buy";
+export type CryptoId = "SOL" | "USDT" | "USDC";
 
 export const CRYPTO_OPTIONS: Array<{ id: CryptoId; label: string }> = [
-  { id: 'SOL', label: 'SOL' },
-  { id: 'USDT', label: 'USDT (Solana)' },
-  { id: 'USDC', label: 'USDC (Solana)' },
+  { id: "SOL", label: "SOL" },
+  { id: "USDT", label: "USDT (Solana)" },
+  { id: "USDC", label: "USDC (Solana)" },
 ];
 
 export function cryptoLabel(id: CryptoId): string {
@@ -37,31 +37,43 @@ export function onMount(load: () => Promise<void>): () => void {
   };
 }
 
-export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+export async function fetchJson<T>(
+  url: string,
+  init?: RequestInit,
+): Promise<T> {
   const response = await fetch(url, init);
-  const body = (await response.json()) as { ok: boolean; data?: T; error?: string };
-  if (!body.ok || body.data === undefined) throw new Error(body.error ?? 'Request failed');
+  const body = (await response.json()) as {
+    ok: boolean;
+    data?: T;
+    error?: string;
+  };
+  if (!body.ok || body.data === undefined)
+    throw new Error(body.error ?? "Request failed");
   return body.data;
 }
 
 export function money(value: number): string {
   const digits = value >= 1000 ? 0 : value >= 1 ? 2 : 6;
-  return value.toLocaleString('en-US', { maximumFractionDigits: digits });
+  return value.toLocaleString("en-US", { maximumFractionDigits: digits });
 }
 
 /** Signed % of `price` against `reference`, where "better" depends on side. */
-export function advantage(price: number, reference: number, side: Side): number {
+export function advantage(
+  price: number,
+  reference: number,
+  side: Side,
+): number {
   const raw = (price / reference - 1) * 100;
-  return side === 'sell' ? raw : -raw;
+  return side === "sell" ? raw : -raw;
 }
 
 export const inputClass =
-  'h-[34px] w-full rounded-lg border border-border bg-surface-subtle px-2.5 text-sm outline-none transition focus:border-accent placeholder:text-faint';
+  "h-11 w-full rounded-lg border border-border bg-surface-subtle px-2.5 text-sm outline-none transition focus:border-accent placeholder:text-faint";
 
 export function Field({
   label,
   children,
-  className = '',
+  className = "",
 }: {
   label: string;
   children: ReactNode;
@@ -69,7 +81,7 @@ export function Field({
 }) {
   return (
     <label className={`block ${className}`}>
-      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-faint">
+      <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted">
         {label}
       </span>
       {children}
@@ -89,7 +101,7 @@ export function FilterGroup({
   title,
   hint,
   children,
-  className = '',
+  className = "",
 }: {
   title: string;
   hint?: string;
@@ -102,7 +114,11 @@ export function FilterGroup({
     >
       <legend className="flex items-baseline gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
         {title}
-        {hint && <span className="font-normal normal-case tracking-normal text-faint">{hint}</span>}
+        {hint && (
+          <span className="font-normal normal-case tracking-normal text-faint">
+            {hint}
+          </span>
+        )}
       </legend>
       {children}
     </fieldset>
@@ -119,14 +135,16 @@ export function Segmented<T extends string>({
   onChange: (id: T) => void;
 }) {
   return (
-    <div className="inline-flex h-[34px] rounded-lg border border-border bg-surface-subtle p-0.5">
+    <div className="inline-flex h-11 rounded-lg border border-border bg-surface-subtle p-0.5">
       {options.map((option) => (
         <button
           key={option.id}
           type="button"
           onClick={() => onChange(option.id)}
           className={`rounded-md px-3 text-sm font-medium transition ${
-            value === option.id ? 'bg-accent text-accent-fg' : 'text-muted hover:text-foreground'
+            value === option.id
+              ? "bg-accent text-accent-fg"
+              : "text-muted hover:text-foreground"
           }`}
         >
           {option.label}
@@ -154,8 +172,8 @@ export function SideAndCrypto({
           value={side}
           onChange={onSide}
           options={[
-            { id: 'sell', label: 'Sell' },
-            { id: 'buy', label: 'Buy' },
+            { id: "sell", label: "Sell" },
+            { id: "buy", label: "Buy" },
           ]}
         />
       </Field>
