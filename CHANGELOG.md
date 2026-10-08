@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Added
+- **My cards** (Home tab): connect a bank and see card balances and recent payments. Read-only by contract — the integration has no way to move money, and never asks for a bank login, PIN, SMS code or card number. Card numbers are stored and shown masked. Disconnecting deletes the token and everything read with it. Transactions are purged after `BANKS_RETENTION_DAYS` (default 90).
+- **Monobank** via the official personal API (`api.monobank.ua`), behind `BANKS_MONOBANK_ENABLED` (off by default). Bank credentials are encrypted at rest with the same AES-256-GCM helper as the Binance key and are never returned to the browser.
+- Bank provider interface (`src/lib/banks/types.ts`) so a Monobank personal token can be swapped for Corporate access, or another bank added, without touching the models, routes or screens.
+- `BANKS_MONOBANK_ENABLED`, `BANKS_PRIVAT_ENABLED`, `BANKS_RETENTION_DAYS`.
+
 - **Three tabs**: P2P (everything that was on the dashboard, plus Autotrade), Exchanger and Compare. The tab is kept in the URL hash.
 - **Exchanger tab**: exchangers on BestChange that buy or sell SOL, USDT (Solana) and USDC (Solana) through e-money, bank accounts and cards. Picked like on BestChange — payment system, then currency — with search, currency and type filters. Per rail, every offer with limits, reviews and warnings, and its difference from the best Binance P2P price in the same fiat.
 - **Compare tab**: for one crypto, side (buy / sell) and fiat, exchanger offers and Binance P2P side by side per 1 unit, sortable by price; filters for sources, Binance merchants only, payment method, and an amount that fits. For SOL also the route via USDT.
@@ -14,6 +19,13 @@
 - **P2P tab reorganised for non-experts.** Instead of eight panels on one page, it has sections — My balance, Sell SOL, Buy SOL, Trade with people, Auto-sell, My account — each with a short explanation and numbered "how it works" steps. A "Before you start" checklist (connect wallet, connect Binance) shows until both are done. The section is kept in the URL hash (`#p2p/sell`).
 - Plain-language wording across the P2P tab: statuses ("On Binance · ready to exchange" instead of "Credited on Binance"), buttons ("See price", "Confirm and exchange", "Turn on auto-sell"), prices shown as "1 USDT = 41.5 UAH", P2P offers marked "best price" and "reliable" / "check reviews". The P2P order archive is now "My deals", with optional fields folded away.
 - Binance P2P ads (P2P ads panel, Compare) link to the advertiser's merchant page instead of the filtered P2P board, or to the ad itself when the advertiser cannot be looked up.
+
+### Migrations
+- `20261008091407_banks` — adds `BankConnection`, `BankAccount` and `BankTransaction`. Additive only; no existing table is changed.
+
+### Not yet verified against a live token
+- Monobank response **field names** are taken from the published spec and community SDKs. The machine-readable spec (`swagger.json`) answers 403 to non-browser clients, so the field names could not be read from it directly. Endpoints, the `X-Token` header, the one-request-per-minute limit and the 31-day statement window **were** verified first-hand. One correction already found: the statement balance field is `balance`, not `balanceAfter`.
+- No Monobank call has been made with a real token. The rate limiter, the window clamp, the minor-unit arithmetic and the flag gating were tested with mocked data.
 
 ### Fixed
 - P2P ads showed order limits as fiat. Binance sends them in the asset (SOL, USDT); they are now labelled that way.

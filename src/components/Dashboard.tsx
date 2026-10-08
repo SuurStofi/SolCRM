@@ -6,6 +6,7 @@ import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { shortenAddress } from "@/lib/solana/read";
 import { useAuth } from "./AuthProvider";
 import { AccountPanel } from "./AccountPanel";
+import { CardsPanel } from "./CardsPanel";
 import { WalletPanel } from "./WalletPanel";
 import { BinancePanel } from "./BinancePanel";
 import { TransferPanel } from "./TransferPanel";
@@ -224,6 +225,14 @@ const HOME_SECTIONS = [
     steps: [],
   },
   {
+    id: "cards",
+    label: "My cards",
+    title: "Your bank cards",
+    about:
+      "Connect a bank to see your card balances and recent payments here. Read only: this never moves money and never asks for your bank login.",
+    steps: [],
+  },
+  {
     id: "account",
     label: "My account",
     title: "Account and Binance connection",
@@ -425,6 +434,9 @@ function HomeTab() {
         <div className="mt-5">
           <HoldingsCharts />
         </div>
+      </div>
+      <div hidden={active !== "cards"} className="mx-auto max-w-2xl">
+        <CardsPanel />
       </div>
       <div hidden={active !== "account"} className="mx-auto max-w-2xl">
         <AccountPanel />

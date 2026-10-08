@@ -67,7 +67,7 @@ model TransferFlow {
 /// Append-only audit of every state transition, so a failed run can be
 /// understood after the fact rather than just showing a final status.
 model FlowEvent {
-  id     String @id @default(cuid())
+  id     String       @id @default(cuid())
   flowId String
   flow   TransferFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
 
@@ -100,14 +100,14 @@ model P2POrder {
   /// Ad this came from, so the counterparty can be found again.
   adNo String?
 
-  asset      String  @default("USDT")
-  fiat       String
+  asset     String  @default("USDT")
+  fiat      String
   /// Trade direction from MY perspective: I am selling USDT to a buyer.
-  tradeType  String  @default("SELL")
-  amount     String? // decimal string
-  price      String? // decimal string
-  totalFiat  String? // decimal string
-  payMethod  String?
+  tradeType String  @default("SELL")
+  amount    String? // decimal string
+  price     String? // decimal string
+  totalFiat String? // decimal string
+  payMethod String?
 
   counterpartyName String?
 
@@ -155,16 +155,18 @@ model User {
 
   autoTrade     AutoTradeConfig?
   autoTradeRuns AutoTradeRun[]
+
+  bankConnections BankConnection[]
 }
 
 /// A Solana wallet whose owner proved control by signing a challenge. Any
 /// linked wallet can sign in to the account.
 model Wallet {
-  id      String @id @default(cuid())
+  id      String  @id @default(cuid())
   /// Base58 public key. Globally unique: one wallet, one account.
-  address String @unique
+  address String  @unique
   userId  String
-  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   label   String?
 
   createdAt DateTime @default(now())
@@ -280,19 +282,19 @@ model AutoTradeConfig {
   userId String @id
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  enabled Boolean @default(false)
-  fiat    String  @default("UAH")
+  enabled      Boolean @default(false)
+  fiat         String  @default("UAH")
   /// Lowest buyer price that triggers, fiat per USDT (decimal string).
-  minPrice  String
+  minPrice     String
   /// SOL converted per run (decimal string).
-  amountSol String
+  amountSol    String
   /// Binance trade-method identifier the buyer must accept (e.g. "Monobank").
-  buyerMethod String?
+  buyerMethod  String?
   /// JSON array of the user's own Binance payIds, used on the published ad.
-  payIds       String @default("[]")
+  payIds       String  @default("[]")
   /// Per-order limits of the published ad, fiat (decimal strings).
   minOrderFiat String
-  payTimeLimit Int    @default(15)
+  payTimeLimit Int     @default(15)
 
   /// Outcome of the latest check, scrubbed -- safe to render.
   lastCheck   String?
@@ -309,10 +311,10 @@ model AutoTradeRun {
   fiat  String
 
   // --- what triggered it ---
-  amountSol       String
-  triggerAdNo     String
+  amountSol         String
+  triggerAdNo       String
   /// The buyer's price, fiat per USDT; the published ad uses it.
-  triggerPrice    String
+  triggerPrice      String
   triggerAdvertiser String?
 
   // --- convert leg ---
@@ -344,4 +346,131 @@ model AutoTradeEvent {
   createdAt DateTime @default(now())
 
   @@index([runId, createdAt])
+}
+
+/// A connected bank, per account.
+///
+/// The credential is encrypted with the same AES-256-GCM helper as the Binance
+/// key and is never returned to the browser -- the UI only ever sees
+/// `tokenHint`.
+///
+/// `provider` decides what `credentialEnc` holds, so a new bank is a new
+/// provider rather than new columns:
+///   monobank        -- a personal X-Token
+///   privat_business -- Privat24 for Business AutoClient id + token (JSON)
+///   privat_import   -- no credential; rows come from an uploaded statement
+model BankConnection {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider String
+
+  /// Encrypted credential. Null for providers that have none (statement import).
+  credentialEnc String?
+  /// Last 4 characters of the token, so the UI can say which one is stored.
+  tokenHint     String?
+
+  /// What the user named this connection, e.g. "Monobank black".
+  label String?
+
+  /// When the user agreed to the read-only terms. Required before any sync:
+  /// a connection without it was never consented to.
+  consentAt DateTime
+
+  /// Last successful sync, and why the last one failed. Both drive the
+  /// "updated N min ago" line and the rate-limit message in the UI.
+  lastSyncedAt DateTime?
+  lastError    String?
+
+  /// active | error | revoked
+  status String @default("active")
+
+  accounts BankAccount[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// One card or account inside a bank connection.
+///
+/// Balances are stored in minor units (kopiyky, cents) as integers, the way
+/// Monobank reports them. Money never becomes a float here.
+model BankAccount {
+  id           String         @id @default(cuid())
+  connectionId String
+  connection   BankConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  /// The bank's own id for this account.
+  externalId String
+
+  /// Masked card number only, e.g. "537541******4417". A full PAN is never
+  /// stored, and Monobank never sends one.
+  maskedPan String?
+  /// Set for providers that expose it; useful for matching incoming payments.
+  iban      String?
+
+  /// ISO-4217 numeric, as Monobank reports it (980 UAH, 840 USD, 978 EUR).
+  currencyCode Int
+
+  /// Minor units. Monobank's `balance` already includes the credit limit, so
+  /// `creditLimit` is kept separately to show what is actually the user's.
+  balance     BigInt @default(0)
+  creditLimit BigInt @default(0)
+
+  balanceUpdatedAt DateTime?
+
+  /// Monobank account type (black, white, platinum, iron, fop, yellow...).
+  accountType String?
+
+  transactions BankTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([connectionId, externalId])
+  @@index([connectionId])
+}
+
+/// One transaction on a bank account.
+///
+/// Kept for a limited window (BANKS_RETENTION_DAYS, default 90) and purged
+/// after that, so the app holds only what the UI needs.
+model BankTransaction {
+  id            String      @id @default(cuid())
+  bankAccountId String
+  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  /// The bank's transaction id. Unique per account, which is what makes
+  /// webhook and polling deliveries idempotent.
+  externalId String
+
+  time            DateTime
+  /// Minor units, signed: negative is money out.
+  amount          BigInt
+  /// Amount in the account's own currency, when it differs from `amount`.
+  operationAmount BigInt?
+  currencyCode    Int
+
+  description String
+  /// Merchant category code, for grouping in the UI.
+  mcc         Int?
+  /// True while the bank still holds the amount; the final figure can differ.
+  hold        Boolean @default(false)
+
+  /// Balance after this transaction, in minor units. Monobank calls this
+  /// `balance` -- not `balanceAfter`, despite what several guides claim.
+  balance BigInt?
+
+  /// Counterparty, only where the bank provides it. Never a card number.
+  counterName String?
+  counterIban String?
+  comment     String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([bankAccountId, externalId])
+  @@index([bankAccountId, time])
 }
