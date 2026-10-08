@@ -379,3 +379,37 @@ client decodes by the declared charset rather than assuming UTF-8.
 AutoClient reports money as decimal strings in major units where Monobank uses
 integer minor units; the adapter converts via string handling so no value
 passes through a float.
+
+## Total balance
+
+**Home → Total balance** adds up every connected source in one currency
+(USD, UAH or EUR; the list is easy to extend).
+
+Fiat rates come from Monobank's public `/bank/currency`, which needs no token
+and carries its own timestamp, so the page can say where a rate came from and
+how old it is. The midpoint of buy and sell is used: a total is neither a
+purchase nor a sale, so quoting one side would bias every figure.
+
+The rules that make the number trustworthy:
+
+- **Only connected sources count**, and the page lists which.
+- **A failed refresh keeps its last value, marked stale.** A total that
+  silently drops because one source timed out is worse than one that admits it
+  is out of date.
+- **Money in transit is shown separately.** SOL that has left the wallet but
+  is not yet credited on Binance exists in neither balance, so it is listed on
+  its own and never added twice.
+- **Unpriceable assets are named, not dropped.** If SOL's price cannot be
+  fetched, the page says SOL is missing from the total.
+- **A credit limit is not your money.** Monobank's balance includes it, so the
+  total uses `balance - creditLimit`.
+
+### PayPal is never presented as live
+
+There is no API for reading a consumer's PayPal balance, so this app cannot
+know it and does not pretend to. PayPal appears under **Not counted**, labelled
+"Not connected — transfers only". Only PYUSD moved through SolCRM is visible.
+
+A PayPal receive address is treated as a destination, never as the user's
+holding: its on-chain balance belongs to PayPal, so it is never read and never
+added to the total.

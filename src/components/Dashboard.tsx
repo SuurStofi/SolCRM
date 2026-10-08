@@ -8,6 +8,7 @@ import { useAuth } from "./AuthProvider";
 import { AccountPanel } from "./AccountPanel";
 import { CardsPanel } from "./CardsPanel";
 import { PayPalPanel } from "./PayPalPanel";
+import { TotalsPanel } from "./TotalsPanel";
 import { WalletPanel } from "./WalletPanel";
 import { BinancePanel } from "./BinancePanel";
 import { TransferPanel } from "./TransferPanel";
@@ -217,6 +218,14 @@ function Tabs() {
  * how it works, instead of every panel on one long page.
  */
 const HOME_SECTIONS = [
+  {
+    id: "total",
+    label: "Total balance",
+    title: "Everything in one place",
+    about:
+      "Your wallet, Binance and any cards you have connected, added up in one currency. Sources that could not be refreshed keep their last value and are marked, so the total never quietly drops.",
+    steps: [],
+  },
   {
     id: "wallet",
     label: "My wallet",
@@ -435,6 +444,9 @@ function HomeTab() {
         onSelect={(id) => select(id as HomeSectionId)}
       />
 
+      <div hidden={active !== "total"} className="mx-auto max-w-2xl">
+        <TotalsPanel />
+      </div>
       <div hidden={active !== "wallet"}>
         <div className="grid items-start gap-5 lg:grid-cols-2">
           <WalletPanel />
