@@ -4,13 +4,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import {
-  getWalletSnapshot,
   getRecentTransactions,
   explorerTxUrl,
   explorerAddressUrl,
   shortenAddress,
-  type WalletSnapshot,
   type TxSummary,
+  type TokenHolding,
 } from '@/lib/solana/read';
 import {
   Panel,
@@ -25,22 +24,26 @@ import {
   ExtLink,
   CopyButton,
 } from './ui';
+import { useWalletSnapshot } from './WalletSnapshotProvider';
 
 export function WalletPanel() {
   const { connection } = useConnection();
   const { publicKey, connected } = useWallet();
 
-  const [snapshot, setSnapshot] = useState<WalletSnapshot | null>(null);
+  // Balances come from the shared read; only the signature list is fetched
+  // here, since no other panel needs it.
+  const {
+    snapshot: activeSnapshot,
+    loading: snapshotLoading,
+    error: snapshotError,
+    refresh: refreshSnapshot,
+  } = useWalletSnapshot();
+
   const [transactions, setTransactions] = useState<TxSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const address = publicKey?.toBase58() ?? null;
-
-  // Derived during render rather than cleared in an effect: on disconnect (or
-  // a switch to another wallet) this drops data belonging to the previous key
-  // immediately, with no intermediate frame showing the wrong account.
-  const activeSnapshot = snapshot && snapshot.address === address ? snapshot : null;
   const activeTransactions = activeSnapshot ? transactions : [];
 
   const load = useCallback(async () => {
@@ -48,18 +51,17 @@ export function WalletPanel() {
     setLoading(true);
     setError(null);
     try {
-      const [snap, txs] = await Promise.all([
-        getWalletSnapshot(connection, publicKey),
+      const [, txs] = await Promise.all([
+        refreshSnapshot(),
         getRecentTransactions(connection, publicKey),
       ]);
-      setSnapshot(snap);
       setTransactions(txs);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Failed to load wallet data.');
     } finally {
       setLoading(false);
     }
-  }, [connection, publicKey]);
+  }, [connection, publicKey, refreshSnapshot]);
 
   useEffect(() => {
     if (!connected || !publicKey) return;
@@ -86,7 +88,7 @@ export function WalletPanel() {
       icon={<SolanaMark />}
       action={
         <div className="flex items-center gap-2">
-          {connected && <RefreshButton onClick={load} loading={loading} />}
+          {connected && <RefreshButton onClick={load} loading={loading || snapshotLoading} />}
           <WalletMultiButton />
         </div>
       }
@@ -95,7 +97,7 @@ export function WalletPanel() {
         <EmptyState />
       ) : (
         <div className="space-y-6">
-          {error && <ErrorNote title="Could not load wallet data">{error}</ErrorNote>}
+          {(error ?? snapshotError) && <ErrorNote title="Could not load wallet data">{error ?? snapshotError}</ErrorNote>}
 
           {/* Headline balance */}
           <div>
@@ -136,7 +138,7 @@ export function WalletPanel() {
             {activeSnapshot ? (
               activeSnapshot.tokens.length > 0 ? (
                 <div>
-                  {activeSnapshot.tokens.slice(0, 6).map((token) => (
+                  {activeSnapshot.tokens.slice(0, 6).map((token: TokenHolding) => (
                     <Row key={token.mint}>
                       {/* No token registry in Phase 1, so the mint is the only
                           reliable identifier available. */}

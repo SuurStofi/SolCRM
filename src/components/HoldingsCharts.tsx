@@ -1,8 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { getWalletSnapshot } from '@/lib/solana/read';
+import { useWalletSnapshot } from './WalletSnapshotProvider';
 import { useAuth } from './AuthProvider';
 import { HoldingsChart, type Holding } from './HoldingsChart';
 import { RefreshButton } from './ui';
@@ -23,15 +22,14 @@ interface Balance {
  * rather than implying the shares are portfolio value.
  */
 export function HoldingsCharts() {
-  const { connection } = useConnection();
-  const { publicKey, connected } = useWallet();
+  // Shares the one wallet read rather than making its own: three panels each
+  // fetching a snapshot is what tripped the RPC rate limit.
+  const { snapshot, loading: loadingWallet, refresh: refreshWallet } = useWalletSnapshot();
   const { account } = useAuth();
   const hasBinanceKey = Boolean(account?.binance);
 
   const [binance, setBinance] = useState<Holding[] | null>(null);
-  const [wallet, setWallet] = useState<Holding[] | null>(null);
   const [loadingBinance, setLoadingBinance] = useState(false);
-  const [loadingWallet, setLoadingWallet] = useState(false);
 
   const loadBinance = useCallback(async () => {
     if (!hasBinanceKey) {
@@ -64,16 +62,14 @@ export function HoldingsCharts() {
     }
   }, [hasBinanceKey]);
 
-  const loadWallet = useCallback(async () => {
-    if (!connected || !publicKey) {
-      setWallet(null);
-      return;
-    }
-    setLoadingWallet(true);
-    try {
-      const snapshot = await getWalletSnapshot(connection, publicKey);
-      setWallet([
-        { label: 'SOL', value: snapshot.solBalance, display: snapshot.solBalance.toFixed(6) },
+  // Derived from the shared snapshot rather than fetched here.
+  const wallet: Holding[] | null = snapshot
+    ? [
+        {
+          label: 'SOL',
+          value: snapshot.solBalance,
+          display: snapshot.solBalance.toFixed(6),
+        },
         ...snapshot.tokens.map((token) => ({
           // No token registry in this app, so the mint is the only reliable
           // identifier; shortened to stay readable in a legend.
@@ -83,23 +79,18 @@ export function HoldingsCharts() {
             maximumFractionDigits: Math.min(token.decimals, 4),
           }),
         })),
-      ]);
-    } catch {
-      setWallet([]);
-    } finally {
-      setLoadingWallet(false);
-    }
-  }, [connection, connected, publicKey]);
+      ]
+    : null;
 
   useEffect(() => {
     let active = true;
     void Promise.resolve().then(() => {
-      if (active) return Promise.all([loadBinance(), loadWallet()]);
+      if (active) return loadBinance();
     });
     return () => {
       active = false;
     };
-  }, [loadBinance, loadWallet]);
+  }, [loadBinance]);
 
   return (
     <div className="mb-5 grid items-start gap-5 lg:grid-cols-2">
@@ -121,9 +112,9 @@ export function HoldingsCharts() {
         title="In your wallet"
         note="Share of each token by amount held, not by value"
         holdings={wallet ?? []}
-        action={<RefreshButton onClick={loadWallet} loading={loadingWallet} />}
+        action={<RefreshButton onClick={() => void refreshWallet()} loading={loadingWallet} />}
         empty={
-          connected
+          snapshot
             ? loadingWallet
               ? 'Loading…'
               : 'Nothing in this wallet yet.'

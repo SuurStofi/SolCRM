@@ -6,6 +6,7 @@ import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { AuthProvider } from './AuthProvider';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
+import { WalletSnapshotProvider } from './WalletSnapshotProvider';
 
 /**
  * Wallet plumbing. Strictly client-side: the private key never leaves the
@@ -42,7 +43,10 @@ export function SolanaProviders({ children }: { children: ReactNode }) {
       <WalletProvider wallets={[]} autoConnect>
         <WalletModalProvider>
           {/* Inside the wallet context: signing in needs the wallet to sign. */}
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            {/* One wallet read shared by every panel that needs it. */}
+            <WalletSnapshotProvider>{children}</WalletSnapshotProvider>
+          </AuthProvider>
         </WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>

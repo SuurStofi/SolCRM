@@ -237,9 +237,9 @@ const HOME_SECTIONS = [
   {
     id: "cards",
     label: "My cards",
-    title: "Your bank cards",
+    title: "Your cards and payment accounts",
     about:
-      "Connect a bank to see your card balances and recent payments here. Read only: this never moves money and never asks for your bank login.",
+      "Your bank cards and PayPal in one place. Bank connections are read only — they never move money and never ask for your bank login. PayPal works differently: it has no API to read a balance, so only PYUSD you move through this app is visible.",
     steps: [],
   },
   {
@@ -260,14 +260,6 @@ const MARKET_SECTIONS = [
     title: "Exchange one coin for another",
     about:
       "Swap between any two coins Binance supports, on your own Binance account. Nothing leaves Binance, and nothing moves on the blockchain.",
-    steps: [],
-  },
-  {
-    id: "paypal",
-    label: "PayPal",
-    title: "Move money with PayPal",
-    about:
-      "PayPal can send and receive PYUSD, a dollar stablecoin, over the Solana network. You move it from your own wallet, so this app never needs your PayPal login — and cannot read your PayPal balance.",
     steps: [],
   },
   {
@@ -456,8 +448,9 @@ function HomeTab() {
           <HoldingsCharts />
         </div>
       </div>
-      <div hidden={active !== "cards"} className="mx-auto max-w-2xl">
+      <div hidden={active !== "cards"} className="mx-auto max-w-2xl space-y-5">
         <CardsPanel />
+        <PayPalPanel />
       </div>
       <div hidden={active !== "account"} className="mx-auto max-w-2xl">
         <AccountPanel />
@@ -483,9 +476,6 @@ function MarketTab() {
           expires in seconds, and switching must not discard one. */}
       <div hidden={active !== "swap"} className="mx-auto max-w-2xl">
         <ConvertPanel />
-      </div>
-      <div hidden={active !== "paypal"} className="mx-auto max-w-2xl">
-        <PayPalPanel />
       </div>
       <div hidden={active !== "transfer"}>
         <TransferSection onOpenExchange={() => select("swap")} />

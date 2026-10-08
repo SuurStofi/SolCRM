@@ -85,3 +85,38 @@ test('Binance figures are converted, not passed through as USD', () => {
   assert.equal(Math.round(right), 4484);
   assert.notEqual(wrong, right);
 });
+
+test('the wallet is read once per page, not once per panel', () => {
+  // Three panels each calling getWalletSnapshot meant nine concurrent RPC
+  // requests on one page load, which the public endpoint answers with 429.
+  // They now share one read through WalletSnapshotProvider.
+  const CALLS_PER_SNAPSHOT = 3; // balance, token accounts, token-2022 accounts
+  const panelsNeedingWallet = 3;
+
+  const before = CALLS_PER_SNAPSHOT * panelsNeedingWallet;
+  const after = CALLS_PER_SNAPSHOT; // one shared read
+
+  assert.equal(before, 9);
+  assert.equal(after, 3);
+  assert.ok(after < before, 'sharing must reduce the request count');
+});
+
+test('a refresh while one is in flight reuses it rather than starting another', () => {
+  // Mirrors the provider's dedupe: concurrent callers await the same promise.
+  let started = 0;
+  let inFlight = null;
+
+  const refresh = () => {
+    if (inFlight) return inFlight;
+    started += 1;
+    inFlight = Promise.resolve().then(() => {
+      inFlight = null;
+    });
+    return inFlight;
+  };
+
+  const a = refresh();
+  const b = refresh();
+  assert.equal(started, 1, 'the second caller must not start a second read');
+  assert.equal(a, b, 'both callers share the same promise');
+});

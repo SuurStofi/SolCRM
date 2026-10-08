@@ -1,8 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { getWalletSnapshot } from '@/lib/solana/read';
+import { useWalletSnapshot } from './WalletSnapshotProvider';
 import { Panel, SectionLabel, Row, ErrorNote, Spinner, Chip, EmptyRow, RefreshButton } from './ui';
 
 interface SourceLine {
@@ -77,8 +76,8 @@ const LIVENESS_LABEL: Record<SourceLine['liveness'], string> = {
  * total silently fall.
  */
 export function TotalsPanel() {
-  const { connection } = useConnection();
-  const { publicKey, connected } = useWallet();
+  // Reuses the shared wallet read instead of making a fourth one.
+  const { snapshot } = useWalletSnapshot();
 
   const [currency, setCurrency] = useState(840);
   const [data, setData] = useState<Totals | null>(null);
@@ -91,22 +90,18 @@ export function TotalsPanel() {
     try {
       // The wallet half is gathered here and posted: the server has no wallet
       // connection, and this app never holds a key.
-      let wallet:
-        | { address: string; sol: number; tokens: Array<{ mint: string; amount: number }> }
-        | undefined;
-      if (connected && publicKey) {
-        const snapshot = await getWalletSnapshot(connection, publicKey);
-        wallet = {
-          address: snapshot.address,
-          sol: snapshot.solBalance,
-          // Mints, not tickers: the server matches known stablecoin mints and
-          // ignores everything else rather than pricing a token by its name.
-          tokens: snapshot.tokens.map((token) => ({
-            mint: token.mint,
-            amount: token.amount,
-          })),
-        };
-      }
+      const wallet = snapshot
+        ? {
+            address: snapshot.address,
+            sol: snapshot.solBalance,
+            // Mints, not tickers: the server matches known stablecoin mints
+            // and ignores everything else rather than pricing a token by name.
+            tokens: snapshot.tokens.map((token: { mint: string; amount: number }) => ({
+              mint: token.mint,
+              amount: token.amount,
+            })),
+          }
+        : undefined;
 
       const response = await fetch('/api/totals', {
         method: 'POST',
@@ -121,7 +116,7 @@ export function TotalsPanel() {
     } finally {
       setLoading(false);
     }
-  }, [connection, connected, publicKey, currency]);
+  }, [snapshot, currency]);
 
   useEffect(() => {
     let active = true;
