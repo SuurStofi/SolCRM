@@ -14,7 +14,8 @@ import {
   getConvertQuote,
   isConvertFailed,
 } from '../binance/convert';
-import { getMyPayMethods, getPublishableCategories, postSellAd } from '../binance/c2c';
+import { getMyPayMethods, postSellAd } from '../binance/c2c';
+import { checkMerchantStatus, canPublishAds } from './merchant';
 import { provablyNotExecuted } from '../binance/withdraw';
 import { compareDecimal, floorToStep } from '../decimal';
 import { claimRun, getConfig, patchRun, recordCheck, requireRun, transitionRun } from './store';
@@ -114,15 +115,25 @@ export async function findTrigger(settings: Settings): Promise<{ trigger: Trigge
  * Everything checkable before money moves. Throws a SafeError naming the
  * first thing that is missing. Runs with the user's Binance key.
  */
-async function preflight(settings: Settings, trigger: Trigger): Promise<void> {
-  const categories = await getPublishableCategories().catch((error: unknown) => {
+async function preflight(
+  userId: string,
+  settings: Settings,
+  trigger: Trigger,
+): Promise<void> {
+  // Re-checked here, not just when the page loaded: merchant status can be
+  // revoked between arming Auto-sell and it firing, and the cached answer is
+  // deliberately bypassed so this is the live one.
+  const merchant = await checkMerchantStatus(userId, { force: true });
+  if (!canPublishAds(merchant)) {
     throw new SafeError(
-      `Could not confirm this account may publish P2P ads (merchant permission): ${redact(error instanceof Error ? error.message : error)}`,
+      merchant.state === 'unknown'
+        ? `Could not confirm this account may publish P2P ads, so nothing was converted. ${merchant.reason ?? ''}`.trim()
+        : 'This Binance account cannot publish P2P ads — that needs P2P merchant status.',
     );
-  });
-  if (!categories.includes('mass')) {
+  }
+  if (!merchant.categories.includes('mass')) {
     throw new SafeError(
-      'This Binance account cannot publish P2P ads — ad publishing through the API needs P2P merchant status.',
+      'This Binance account cannot publish ordinary P2P ads, only restricted categories.',
     );
   }
 
@@ -193,7 +204,7 @@ export async function checkUser(userId: string): Promise<CheckResult> {
 
   return withBinanceCredentials(creds, async () => {
     try {
-      await preflight(settings, trigger);
+      await preflight(userId, settings, trigger);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       // Off rather than retried every minute: none of these fix themselves.

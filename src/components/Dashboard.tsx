@@ -18,6 +18,8 @@ import { HoldingsCharts } from "./HoldingsCharts";
 import { P2PAdsPanel } from "./P2PAdsPanel";
 import { P2POrdersPanel } from "./P2POrdersPanel";
 import { AutoTradePanel } from "./AutoTradePanel";
+import { MerchantStatusCard } from "./MerchantStatusCard";
+import { canUsePro } from "@/lib/pro";
 import { ExchangePanel } from "./ExchangePanel";
 import { ComparePanel } from "./ComparePanel";
 import { RateLimitBanner } from "./RateLimitBanner";
@@ -56,6 +58,7 @@ const TABS = [
   { id: "p2p", label: "P2P", hint: "Trade with people & auto-sell" },
   { id: "exchange", label: "Dealers", hint: "BestChange offers" },
   { id: "compare", label: "Compare", hint: "Sort by price" },
+  { id: "pro", label: "Pro", hint: "Auto-sell & alerts" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -199,6 +202,16 @@ function Tabs() {
           <ExchangePanel />
         </div>
       )}
+      {visited.has("pro") && (
+        <div
+          role="tabpanel"
+          id="panel-pro"
+          aria-labelledby="tab-pro"
+          hidden={active !== "pro"}
+        >
+          <ProTab />
+        </div>
+      )}
       {visited.has("compare") && (
         <div
           role="tabpanel"
@@ -287,21 +300,35 @@ const P2P_SECTIONS = [
       "Optionally, save the deal here to keep track of it.",
     ],
   },
-  {
-    id: "auto",
-    label: "Auto-sell",
-    title: "Sell automatically at your price",
-    about:
-      "Watches Binance P2P for you and acts when a buyer offers at least your price.",
-    steps: [
-      "Set the lowest price you accept and how much SOL to sell.",
-      "Turn it on. The server checks prices every minute.",
-      "When the price is reached, it exchanges your SOL to USDT and posts a sale ad on Binance, then turns itself off.",
-    ],
-  },
 ] as const;
 
 type P2PSectionId = (typeof P2P_SECTIONS)[number]["id"];
+
+const PRO_SECTIONS = [
+  {
+    id: "auto-sell",
+    label: "Auto-sell",
+    title: "Sell automatically at your price",
+    about:
+      "Watches Binance P2P for you and acts when a buyer offers at least your price. Posting an ad needs Binance P2P merchant status — if you are not a merchant, use Price alerts instead.",
+    steps: [
+      "Set the lowest price you accept, how much SOL to sell, and where you want to be paid.",
+      "Turn it on. The server checks prices every minute and shows the best one it sees.",
+      "Before anything moves it re-checks your merchant status, your key, your balance and your payment method — and stops if any of them fail.",
+      "When a buyer offers your price it exchanges SOL to USDT, posts the ad, and switches itself off so it never sells twice.",
+    ],
+  },
+  {
+    id: "alerts",
+    label: "Price alerts",
+    title: "Tell me when the price is right",
+    about:
+      "Works for everyone, merchant or not: we watch the price and tell you, then you trade by hand.",
+    steps: [],
+  },
+] as const;
+
+type ProSectionId = (typeof PRO_SECTIONS)[number]["id"];
 
 /** The hash is `#tab/section`; this reads the section for one tab. */
 function sectionFromHash<T extends string>(
@@ -506,10 +533,68 @@ function P2PTab() {
         <P2PAdsPanel />
         <P2POrdersPanel />
       </div>
-      <div hidden={active !== "auto"} className="mx-auto max-w-3xl">
-        <AutoTradePanel />
+      {/* Auto-sell lives in Pro now; a pointer stays so anyone who knew it
+          was here can find it. */}
+      <div hidden={active !== "people"} className="mt-5">
+        <a
+          href="#pro/auto-sell"
+          className="inline-flex items-center gap-1.5 text-xs text-muted transition hover:text-foreground"
+        >
+          Auto-sell is now in Pro →
+        </a>
       </div>
     </>
+  );
+}
+
+/** Auto-sell and Price alerts. Open to every signed-in user; see canUsePro. */
+function ProTab() {
+  const [active, select] = useHashSection("pro", PRO_SECTIONS, "auto-sell");
+  const { account } = useAuth();
+
+  // Always true today. The gate exists so billing, if it is ever added, is
+  // one change in src/lib/pro.ts rather than a hunt through the components.
+  if (!canUsePro(account)) {
+    return (
+      <div className="rounded-xl border border-border bg-surface-subtle px-5 py-8 text-center text-sm text-muted">
+        Pro tools are not available on this account.
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <SectionChrome
+        label="Pro sections"
+        sections={PRO_SECTIONS}
+        active={active}
+        onSelect={(id) => select(id as ProSectionId)}
+      />
+
+      <div hidden={active !== "auto-sell"} className="mx-auto max-w-3xl space-y-5">
+        <MerchantStatusCard />
+        <AutoTradePanel />
+      </div>
+      <div hidden={active !== "alerts"} className="mx-auto max-w-3xl">
+        <PriceAlertsPlaceholder />
+      </div>
+    </>
+  );
+}
+
+/**
+ * Price alerts are Task 3; this says so rather than showing an empty panel
+ * that looks broken.
+ */
+function PriceAlertsPlaceholder() {
+  return (
+    <div className="rounded-xl border border-border bg-surface-subtle px-5 py-8 text-center">
+      <p className="text-sm font-medium">Price alerts are coming next.</p>
+      <p className="mx-auto mt-1.5 max-w-sm text-xs leading-relaxed text-muted">
+        They will watch Binance P2P and the dealers for you and tell you when someone
+        pays your price — no merchant status needed.
+      </p>
+    </div>
   );
 }
 

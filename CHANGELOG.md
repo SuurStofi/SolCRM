@@ -9,6 +9,10 @@
 - **Privat24 for Business** via the official AutoClient API, behind `BANKS_PRIVAT_ENABLED` (off by default). Business (FOP/company) accounts only — PrivatBank publishes no personal-card API, and none is faked.
 - **PayPal** (Market tab) via **PYUSD on Solana**, behind `PAYPAL_PYUSD_ENABLED` (off by default). Receive shows the wallet address with a QR and numbered steps; Send builds an SPL transfer the user signs in their own wallet. No PayPal API is used — PayPal publishes none for reading a consumer's balance — so the app never asks for a PayPal login and never claims to know the PayPal balance.
 - `PayoutAddress` model for saved PayPal receive addresses. Deliberately not a `Wallet`: nobody proved control of it, so it can never sign in, and its on-chain balance is PayPal's rather than the user's.
+- **Pro tab** (`#pro`) with **Auto-sell** moved out of P2P into `#pro/auto-sell`, and a placeholder for Price alerts. Everything in Pro is free to every signed-in user; `canUsePro` in `src/lib/pro.ts` is the single seam billing would hook into if it were ever added.
+- **Merchant status card** above Auto-sell: Verified merchant / Not a merchant / Couldn't check / No Binance key, with a "Check again" button, a 10-minute cache, and a live re-check before every run rather than only on page load. "Couldn't check" locks Auto-sell exactly like "Not a merchant" — an uncertain answer is never read as permission.
+- **Responsive layout**: viewport meta (this was missing, so phones laid the page out at ~980px and scaled down), a fixed bottom tab bar on phones with safe-area padding, nav collapsing at 860px before it clips, and 40px minimum touch targets.
+- **Playwright** (`npm run test:e2e`): 15 checks across 360/390/768/1024/1440px plus an emulated iPhone 13.
 - **Activity feed** on the Total balance page: one timeline across wallet transfers, Binance swaps, bank transactions and P2P deals, each marked with its source. Drafts nobody signed are left out — an unsigned transfer is not activity.
 - **Tests** (`npm test`, Node's built-in runner, no new framework): money conversion in all three shapes the providers send, the total-balance rules, and bank response parsing against mocked payloads. No test calls a real bank, and no real token appears in the suite.
 - **Total balance** (Home tab): wallet, Binance and connected cards added up in USD, UAH or EUR, with the rate source and its age shown. A source that failed to refresh keeps its last value and is marked stale rather than vanishing; money in transit between two places is listed separately so it is never counted twice; sources with no price are named rather than silently dropped.
@@ -31,6 +35,8 @@
 - `20261008091407_banks` — adds `BankConnection`, `BankAccount` and `BankTransaction`. Additive only; no existing table is changed.
 
 ### Verified
+- **How Merchant status is checked**: there is no Binance endpoint that reports it. Confirmed 2026-10-09 against Binance's own first-party P2P reference (`binance/binance-skills-hub`, `skills/binance/p2p/SKILL.md`), which states no dedicated status endpoint exists and recommends calling "get available ad categories" and catching the permission error. So the check is `getAvailableAdsCategory`, which is **read-only** — it creates, changes and deletes nothing. The other method that reference mentions, attempting a real ad post, is destructive and is never used.
+- The merchant application URL (`c2c.binance.com/en/merchantApplication`) was confirmed reachable before being linked.
 - Total-balance arithmetic was exercised against mocked sources: currency conversion, a stale source keeping its value, in-transit amounts excluded from the total, PayPal excluded whether or not a figure is entered by hand, unpriceable assets named rather than dropped, and a credit limit not counted as the user's money.
 - The stablecoin mints the total recognises (USDC, USDT, PYUSD) were each read from mainnet; all are 6 decimals.
 - PYUSD's mint, decimals and token program were read from mainnet, not from a token list: `2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo`, 6 decimals, **Token-2022**. The mint carries a `transferFeeConfig` (0 bps today) and a `transferHook` (unset today), so the fee is read per transfer rather than assumed zero.
@@ -45,6 +51,7 @@
 - `20260928195320_autotrade` (`AutoTradeConfig`, `AutoTradeRun`, `AutoTradeEvent`).
 
 ### Not yet verified against a live key
+- Merchant status has **not** been checked against a real merchant account. The read-only call and the four states are implemented and unit-tested, but no live key has returned a category list.
 - Binance C2C agent ad endpoints used by Autotrade (`getAvailableAdsCategory`, `getPayMethodByUserId`, `ads/post`).
 
 ## 0.2.0 — 2026-09-25
