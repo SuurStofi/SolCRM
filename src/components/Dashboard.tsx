@@ -19,6 +19,7 @@ import { P2PAdsPanel } from "./P2PAdsPanel";
 import { P2POrdersPanel } from "./P2POrdersPanel";
 import { AutoTradePanel } from "./AutoTradePanel";
 import { MerchantStatusCard } from "./MerchantStatusCard";
+import { PriceAlertsPanel } from "./PriceAlertsPanel";
 import { canUsePro } from "@/lib/pro";
 import { ExchangePanel } from "./ExchangePanel";
 import { ComparePanel } from "./ComparePanel";
@@ -576,25 +577,9 @@ function ProTab() {
         <AutoTradePanel />
       </div>
       <div hidden={active !== "alerts"} className="mx-auto max-w-3xl">
-        <PriceAlertsPlaceholder />
+        <PriceAlertsPanel />
       </div>
     </>
-  );
-}
-
-/**
- * Price alerts are Task 3; this says so rather than showing an empty panel
- * that looks broken.
- */
-function PriceAlertsPlaceholder() {
-  return (
-    <div className="rounded-xl border border-border bg-surface-subtle px-5 py-8 text-center">
-      <p className="text-sm font-medium">Price alerts are coming next.</p>
-      <p className="mx-auto mt-1.5 max-w-sm text-xs leading-relaxed text-muted">
-        They will watch Binance P2P and the dealers for you and tell you when someone
-        pays your price — no merchant status needed.
-      </p>
-    </div>
   );
 }
 

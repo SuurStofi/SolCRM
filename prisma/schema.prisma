@@ -158,6 +158,8 @@ model User {
 
   bankConnections BankConnection[]
   payoutAddresses PayoutAddress[]
+  priceAlerts     PriceAlert[]
+  notifications   Notification[]
 }
 
 /// A Solana wallet whose owner proved control by signing a challenge. Any
@@ -500,4 +502,78 @@ model PayoutAddress {
 
   @@unique([userId, address])
   @@index([userId])
+}
+
+/// A price the user is waiting for.
+///
+/// The lighter half of Auto-sell: this only watches and tells, so it needs no
+/// merchant status and no Binance key. Checks are grouped by what they need,
+/// so ten alerts on the same market cost one request, not ten.
+model PriceAlert {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// SOL or USDT.
+  asset String
+  /// `sell` means the user wants to sell, so they are waiting for a high
+  /// price; `buy` waits for a low one.
+  side  String
+  fiat  String
+
+  /// binance | exchanger | both
+  source String @default("both")
+
+  /// The price that triggers it, as a decimal string: fiat per 1 asset.
+  target String
+  /// Only offers using this payment method count. Free text as the venue
+  /// spells it; null means any.
+  payMethod String?
+  /// Binance-verified merchants only. Ignored for exchanger rows, which have
+  /// no equivalent.
+  merchantOnly Boolean @default(false)
+
+  /// active | triggered | off
+  status String @default("active")
+
+  /// Re-arm after the cooldown instead of staying triggered.
+  repeat Boolean @default(false)
+  /// While this is in the future a repeating alert stays quiet, so a price
+  /// hovering at the target cannot notify every minute.
+  cooldownUntil DateTime?
+
+  /// What the last check saw, so the UI can show progress toward the target.
+  lastPrice     String?
+  lastCheckedAt DateTime?
+  triggeredAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+/// Something worth telling the user about.
+///
+/// Delivery is separate: this row is the record, and a sender decides whether
+/// it also becomes a browser push. Kept so the bell shows history even if a
+/// push was never enabled or was missed.
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// price_alert | autotrade | system
+  type  String
+  title String
+  body  String
+  /// Where to go when it is tapped.
+  link  String?
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
 }

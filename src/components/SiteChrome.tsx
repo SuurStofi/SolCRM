@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Brand, Arrow } from "./Brand";
 import { useAuth } from "./AuthProvider";
+import { NotificationBell } from "./NotificationBell";
 import { shortenAddress } from "@/lib/solana/read";
 
 export function SiteHeader() {
@@ -29,7 +30,10 @@ export function SiteHeader() {
         </nav>
         <div className="header-actions">
           {workspace ? (
-            <AccountBadge />
+            <>
+              <NotificationBell />
+              <AccountBadge />
+            </>
           ) : (
             <Link href="/app" className="button button-small">
               Open app <Arrow />

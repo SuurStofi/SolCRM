@@ -218,6 +218,8 @@ src/
 │     │  └─ offers/               dealer offers + Binance reference
 │     ├─ compare/                 dealers vs Binance P2P, one scale
 │     ├─ autotrade/               settings, runs, check now, run actions
+│     ├─ alerts/                 price alerts (GET/POST/PATCH/DELETE)
+│     ├─ notifications/          notification feed + mark all read
 │     ├─ p2p/
 │     │  ├─ ads/                  public ad search
 │     │  └─ orders/               local order archive (GET/POST/PATCH)
@@ -229,6 +231,8 @@ src/
 │  ├─ ComparePanel.tsx            Compare tab
 │  ├─ market-ui.tsx               shared bits of those two tabs
 │  ├─ AutoTradePanel.tsx          autotrade settings and runs
+│  ├─ PriceAlertsPanel.tsx       price alerts (Pro tab)
+│  ├─ NotificationBell.tsx       header bell + unread count
 │  ├─ AccountPanel.tsx            linked wallets, Binance key
 │  ├─ WalletProvider.tsx          wallet adapter, client-side only
 │  ├─ WalletPanel.tsx             SOL balance, SPL tokens, tx history
@@ -265,7 +269,11 @@ src/
    │  ├─ machine.ts               run state machine
    │  ├─ store.ts                 persistence, compare-and-set, claim
    │  ├─ engine.ts                trigger, preflight, convert, publish
-   │  └─ scheduler.ts             60 s background timer
+   │  ├─ merchant.ts              merchant status, cached, never assumed
+   │  └─ scheduler.ts             60 s background timer (autotrade + alerts)
+   ├─ alerts/
+   │  ├─ engine.ts                grouped price checks, cooldowns, firing
+   │  └─ notify.ts                notification record + sender list
    ├─ compare.ts                  crypto <-> fiat across dealers and Binance
    ├─ solana/
    │  ├─ read.ts                  balance, SPL tokens, tx history
@@ -414,6 +422,38 @@ A PayPal receive address is treated as a destination, never as the user's
 holding: its on-chain balance belongs to PayPal, so it is never read and never
 added to the total.
 
+## Price alerts
+
+Alerts watch Binance P2P and the dealers for a price and tell you when someone
+meets it. You make the trade yourself, which is the point: because the app
+publishes nothing on your behalf, alerts need no P2P merchant status and work
+on every account — unlike Auto-sell.
+
+Set one in **Pro → Price alerts**: buy or sell, which coin, the price, and the
+fiat. Optionally narrow it to one payment method, to Binance merchants only, or
+to one venue type. One-shot alerts switch themselves off once they fire;
+repeating ones go quiet for an hour instead, so a price sitting at your target
+cannot notify you every minute. Ten alerts may run at once.
+
+Notifications appear under the bell in the workspace header, with an unread
+count; opening it marks them read. The in-app record is always written first
+and other channels are senders layered on top (`src/lib/alerts/notify.ts`), so
+a delivery failure never loses the message. Browser push is stubbed behind
+`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` and does nothing until per-device
+subscriptions are stored — setting the keys alone does not start sending.
+
+Two details that are easy to get wrong:
+
+- **Rate limits.** Alerts are grouped by (coin, side, fiat, source) *before*
+  anything is fetched, so ten alerts on SOL/UAH cost one round of requests
+  rather than ten. Alerts also share Auto-sell's existing 60-second server
+  timer instead of adding a second schedule against the same rate-limited APIs.
+- **Which price counts.** Where a venue publishes a fee, the fee-adjusted price
+  is both what the target is compared against and what the rows are ranked by.
+  These have to be the same number: ranking on the headline price while judging
+  the net one lets a dealer that advertises more but pays less win the ranking
+  and then fail the target, hiding a qualifying offer behind it.
+
 ## Tests
 
 ```bash
@@ -433,5 +473,11 @@ quiet mistake would mean a wrong number rather than a crash:
   as the holder's money.
 - **Bank response parsing** against hand-written payloads in the documented
   shape.
+- **Merchant status**: that an uncertain answer is never read as permission,
+  and that the preflight refuses before anything is converted.
+- **Price alerts**: the buy/sell comparison at and either side of the target,
+  the fee-adjusted price deciding rather than the headline one, cooldowns, and
+  that alerts on one market are grouped into a single fetch.
 
-No test calls a real bank, and no real token appears in the suite.
+No test calls a real bank or a real market, and no real token appears in the
+suite.
