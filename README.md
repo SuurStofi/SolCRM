@@ -2,9 +2,23 @@
 
 Version **0.2.0** — see [CHANGELOG.md](CHANGELOG.md).
 
-Multi-account dashboard: Solana wallet → Binance → P2P. You sign in with a Solana wallet, link more wallets to the same account, and exchange through **your own** Binance account via your own API key.
+Takes you from a Solana wallet to cash. You sign in with a Solana wallet, link
+more wallets to the same account, and exchange through **your own** Binance
+account via your own API key — the app never holds your private key, and your
+Binance credentials stay encrypted on your own server.
 
-**Phases 1 and 2 are complete** (read-only dashboard; transfer and convert). **Phase 3 is partly built:** ad discovery and the local order archive work; order-status polling is deliberately not implemented — see below.
+Runs in a browser and as an [Android app](#android-app); on a Solana Seeker,
+Seed Vault signs transactions in hardware.
+
+📐 **[ARCHITECTURE.md](ARCHITECTURE.md)** — boundaries, data flow, roadmap, and
+an explicit list of what is implemented but not yet verified. Start there to
+understand *why* the code is shaped this way.
+
+What works today: wallet reading, SOL ⇄ USDT through Binance, dealer price
+comparison, P2P ad discovery, Auto-sell, read-only bank cards, a PayPal bridge
+via PYUSD, unified total balance, price alerts, and the Android build. Order
+status polling and P2P chat are deliberately absent — Binance's API does not
+offer them, and this app does not fake capabilities it lacks.
 
 ---
 
