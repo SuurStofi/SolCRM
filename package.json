@@ -11,10 +11,17 @@
     "db:setup": "prisma generate && prisma migrate deploy",
     "db:status": "prisma migrate status",
     "test": "node --test \"tests/*.test.mjs\"",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "android:sync": "cap sync android",
+    "android:release": "node scripts/android-release.mjs",
+    "android:icons": "node scripts/android-icons.mjs"
   },
   "dependencies": {
+    "@capacitor/android": "7.6.9",
+    "@capacitor/cli": "7.6.9",
+    "@capacitor/core": "7.6.9",
     "@prisma/client": "^7.10.0",
+    "@solana-mobile/wallet-standard-mobile": "0.7.0",
     "@solana/spl-token": "^0.4.15",
     "@solana/wallet-adapter-base": "^0.9.28",
     "@solana/wallet-adapter-react": "^0.15.40",

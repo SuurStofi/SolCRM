@@ -422,6 +422,21 @@ A PayPal receive address is treated as a destination, never as the user's
 holding: its on-chain balance belongs to PayPal, so it is never read and never
 added to the total.
 
+## Android app
+
+A Capacitor shell wraps the deployed site, so the phone talks to the same
+server the browser does. On a Solana Seeker, Seed Vault signs transactions
+natively through Mobile Wallet Adapter.
+
+```bash
+npm run android:release   # signed APK, verified before it is handed over
+```
+
+Because the APK carries no logic, deploying the server updates the app. See
+[deploy/android/README.md](deploy/android/README.md) for the toolchain (it needs
+JDK 21, not 17), the signing setup, and what has not been tested on real
+hardware.
+
 ## Price alerts
 
 Alerts watch Binance P2P and the dealers for a price and tell you when someone

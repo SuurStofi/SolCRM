@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SolCRM</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid; place-items: center; padding: 24px;
+    background: #0c0912; color: #ece7f6;
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    text-align: center;
+  }
+  .card { max-width: 22rem; }
+  h1 { font-size: 1.05rem; margin: 0 0 .5rem; letter-spacing: -.01em; }
+  p { margin: 0 0 1.25rem; color: #a99fbe; font-size: .85rem; }
+  button {
+    font: inherit; font-weight: 500; font-size: .875rem;
+    color: #211035; background: #c0a3ff;
+    border: 0; border-radius: 10px; padding: 11px 18px; min-height: 44px;
+  }
+  button:active { filter: brightness(.92); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #e5756f;
+         display: inline-block; margin-right: 7px; vertical-align: 1px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1><span class="dot"></span>No connection</h1>
+    <p>
+      SolCRM keeps your balances and keys on your own server, so it needs
+      a connection to show them. Nothing is lost &mdash; reconnect and continue.
+    </p>
+    <button type="button" onclick="location.replace('https://solcrm.tech/app')">
+      Try again
+    </button>
+  </div>
+</body>
+</html>

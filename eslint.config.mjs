@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Native shell: generated Gradle output and the vendored Capacitor
+    // bridge. Not ours to lint, and the APK does not care.
+    "android/**",
+    "android-sdk/**",
+    "build-tools-local/**",
   ]),
 ]);
 

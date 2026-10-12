@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { AuthProvider } from './AuthProvider';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 import { WalletSnapshotProvider } from './WalletSnapshotProvider';
+import { ensureMwaRegistered } from '@/lib/solana/mwa';
 
 /**
  * Wallet plumbing. Strictly client-side: the private key never leaves the
@@ -17,8 +18,18 @@ import { WalletSnapshotProvider } from './WalletSnapshotProvider';
  * implement the Wallet Standard and are auto-discovered by the adapter, so
  * listing them explicitly would only add a large dependency and duplicate
  * entries in the picker.
+ *
+ * On Android, Mobile Wallet Adapter registers itself into that same registry
+ * (see src/lib/solana/mwa.ts), so Seed Vault on a Seeker appears in the picker
+ * without this component knowing anything about it.
  */
 export function SolanaProviders({ children }: { children: ReactNode }) {
+  // In an effect, not during render: registerMwa touches window, and the docs
+  // require a non-SSR context for it.
+  useEffect(() => {
+    ensureMwaRegistered();
+  }, []);
+
   const endpoint = useMemo(() => {
     // A browser-usable RPC (e.g. Helius) can be called directly.
     const configured = process.env.NEXT_PUBLIC_SOLANA_RPC_URL;

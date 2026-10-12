@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Taken from src/app/globals.css so the native chrome matches the web UI.
+        styles.xml references these three; the Capacitor template ships the
+        references without the definitions, which fails to link.
+
+        colorPrimary and colorPrimaryDark are the CSS background token, and
+        colorAccent is the CSS accent token.
+    -->
+    <color name="colorPrimary">#0C0912</color>
+    <color name="colorPrimaryDark">#0C0912</color>
+    <color name="colorAccent">#C0A3FF</color>
+    <color name="splashBackground">#0C0912</color>
+</resources>

@@ -59,3 +59,31 @@ secrets*.zip
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Android signing material. The keystore IS the app's identity: anyone holding
+# it plus the password can publish an update that installs over this app, so it
+# never enters git. Back it up somewhere private -- losing it means future
+# releases can no longer install over an existing install.
+*.keystore
+*.jks
+/android/key.properties
+/android/keystore.properties
+
+# Android build output.
+/android/build/
+/android/app/build/
+/android/.gradle/
+/android/local.properties
+/android/app/release/
+/android/app/src/main/assets/public/
+/android/app/src/main/assets/capacitor.config.json
+/android/app/src/main/assets/capacitor.plugins.json
+
+# Local Android SDK (~500MB), downloaded by hand rather than installed
+# system-wide. Reproducible from deploy/android/README.md, so it is not worth
+# versioning.
+/android-sdk/
+
+# Local JDK 21, needed because @capacitor/android compiles at source level 21.
+# Downloaded rather than installed system-wide; see deploy/android/README.md.
+/build-tools-local/

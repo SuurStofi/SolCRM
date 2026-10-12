@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the background token in src/app/globals.css, so the launcher
+         icon and the app itself are the same colour. -->
+    <color name="ic_launcher_background">#0C0912</color>
+</resources>
