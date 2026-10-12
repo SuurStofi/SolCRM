@@ -87,3 +87,4 @@ secrets*.zip
 # Local JDK 21, needed because @capacitor/android compiles at source level 21.
 # Downloaded rather than installed system-wide; see deploy/android/README.md.
 /build-tools-local/
+/dist/
